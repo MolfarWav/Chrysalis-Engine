@@ -783,8 +783,13 @@ function loadSessionDialogue(sFile: string, model: { api: string; provider: stri
   }
 }
 
-/** pi-ai's overflow patterns, plus wordings seen from OpenAI-compatible servers. */
+/** pi-ai's overflow patterns (minus the bodiless-status guess), plus wordings
+ *  seen from OpenAI-compatible servers. */
 function isOverflow(m: AssistantMessage): boolean {
+  // pi-ai reads any bodiless 400/413 as an overflow (Cerebras); free-tier
+  // gateways send those for unrelated refusals, and a false overflow costs a
+  // retry plus a compaction. Without a message there is nothing to go on.
+  if (/\(no body\)/i.test(m.errorMessage ?? "")) return false;
   if (isContextOverflow(m)) return true;
   return /exceeds the model'?s context length|maximum context length|context length exceeded/i.test(m.errorMessage ?? "");
 }

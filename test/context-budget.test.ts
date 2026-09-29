@@ -279,6 +279,26 @@ describe("agent loop under a tight window (faux provider)", () => {
     expect(maxSeen[1]!).toBeLessThanOrEqual(20_000);
   }, 30_000);
 
+  it("a bodiless 400 is not taken for an overflow", async () => {
+    const { users, svc, handle, p } = setup(524_288);
+    let calls = 0;
+    handle.setResponses([
+      () => {
+        calls++;
+        return fauxAssistantMessage([], { stopReason: "error", errorMessage: "400 status code (no body)" });
+      },
+      () => {
+        calls++;
+        return fauxAssistantMessage("should not be reached");
+      },
+    ]);
+    const agent = await UserAgent.create("dana", svc, p, users, defaultInstanceConfig());
+    const r = await agent.run("hello");
+    expect(calls).toBe(1);
+    expect(r.error).toBeDefined();
+    expect(r.contextOverflow).toBeUndefined();
+  }, 30_000);
+
   it("an overflow the retry cannot absorb is reported for compaction", async () => {
     const { users, svc, handle, p } = setup(20_000);
     const refuse = () => fauxAssistantMessage([], { stopReason: "error", errorMessage: "context_length_exceeded" });

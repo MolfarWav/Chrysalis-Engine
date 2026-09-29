@@ -2250,7 +2250,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
       // every next message in this session would be refused the same way
       if ((limit > 0 && nextContext >= limit && !result.error) || result.contextOverflow) {
         try {
-          await compactSession(u, agent.sessionId, { auto: true });
+          await compactSession(u, agent.sessionId, { auto: true, model: agent.model.ref });
           autoCompacted = true;
           bus.emit(u.username, "agent_event", { sessionId: agent.sessionId, ev: { type: "autocompact" } });
         } catch (e) {
@@ -2411,7 +2411,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
   // History stays in the file (the UI keeps it scrollable behind a divider);
   // the model's context restarts from the summary (loadSessionDialogue drops
   // everything before the marker).
-  const compactSession = async (u: UserRecord, id: string, opts: { auto?: boolean } = {}): Promise<{ summary: string; runsBefore: number }> => {
+  const compactSession = async (u: UserRecord, id: string, opts: { auto?: boolean; model?: string } = {}): Promise<{ summary: string; runsBefore: number }> => {
     const p = userPaths(dataDir, u.username);
     const file = path.join(sessionDir(p), `${id}.jsonl`);
     if (!fs.existsSync(file)) throw new HttpError(404, "session not found");
@@ -2419,9 +2419,16 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     const records = readRuns(p, id) ?? [];
     const runs = records.filter((r) => r.type === "run");
 
+    // summarize on the model the session runs on, never the account default:
+    // the default may be a different (paid) connection. A manual compact
+    // names no model, so take the one a live agent of this session holds.
+    let model = opts.model;
+    if (!model) {
+      for (const [key, a] of agentInstances) if (key.startsWith(`${u.username}:${id}:`)) model = a.model.ref;
+    }
     let agent: UserAgent;
     try {
-      agent = await getAgent(u, id);
+      agent = await getAgent(u, id, model);
     } catch (e) {
       if (/no models configured/i.test((e as Error).message)) throw new HttpError(503, (e as Error).message);
       throw e;

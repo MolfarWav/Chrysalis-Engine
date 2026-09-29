@@ -19,7 +19,7 @@ import type { McpRegistry, McpToolInfo } from "../mcp/registry.js";
 import { Type } from "typebox";
 import { log } from "../logger.js";
 import { clampThinkingLevel, isContextOverflow, type AssistantMessage } from "@earendil-works/pi-ai";
-import { clampMaxTokens, fitContext } from "./context-budget.js";
+import { clampMaxTokens, fitContext, newTrimState } from "./context-budget.js";
 import { readSandboxSettings } from "../sandbox/network.js";
 
 const ADMIN_TOOLS_PROMPT = `You are also the ADMIN agent for this instance: create users with admin_create_user, list them with admin_list_users. New user tokens are shown exactly once.`;
@@ -331,13 +331,14 @@ export class UserAgent {
     // context budget: trim what is sent when it outgrows the window, and never
     // ask for more output than the window has left (see context-budget.ts)
     const budget = { force: false };
+    const trim = newTrimState();
     const agent: Agent = new Agent({
       transformContext: async (msgs) => {
         // pi-agent-core's contract: this hook must never throw
         try {
           const st = agent.state;
-          const fit = fitContext(st.model, { systemPrompt: st.systemPrompt, messages: msgs, tools: st.tools }, { force: budget.force });
-          if (fit.trimmed) log.info(`[agent:${sessionId}] context trimmed ~${fit.before} → ~${fit.after} tokens (window ${st.model.contextWindow})`);
+          const fit = fitContext(st.model, { systemPrompt: st.systemPrompt, messages: msgs, tools: st.tools }, { force: budget.force, state: trim });
+          if (fit.advanced) log.info(`[agent:${sessionId}] context trimmed ~${fit.before} → ~${fit.after} tokens (window ${st.model.contextWindow})`);
           return fit.messages;
         } catch (e) {
           log.warn(`[agent:${sessionId}] context trim failed, sending as is: ${(e as Error).message}`);

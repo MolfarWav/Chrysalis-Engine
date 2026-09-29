@@ -26,8 +26,8 @@ const MESSAGE_OVERHEAD_TOKENS = 4;
 
 /** Messages at the end of the context that trimming never touches. */
 const PROTECTED_TAIL = 6;
-/** Trim to this share of the input budget, so one trim lasts several calls. */
-const TRIM_TARGET = 0.8;
+/** Trim to this share of the input budget, so one trim lasts many calls. */
+const TRIM_TARGET = 0.6;
 /** Forced trim after a provider overflow: our estimate was wrong, go deep. */
 const FORCED_TRIM_TARGET = 0.5;
 
@@ -232,10 +232,31 @@ function sum(tokens: number[], from = 0): number {
 }
 
 /**
+ * How far trimming has advanced over an agent's history. Messages before
+ * `soft` are clipped, before `hard` clipped hard, before `cut` dropped.
+ * Kept per agent so every call sends the SAME trimmed prefix until the
+ * context outgrows the budget again: a prefix that shifts on every call
+ * defeats provider prompt caching and makes the model re-read what it lost.
+ */
+export interface TrimState {
+  soft: number;
+  hard: number;
+  cut: number;
+}
+
+export function newTrimState(): TrimState {
+  return { soft: 0, hard: 0, cut: 0 };
+}
+
+/**
  * Fit messages under the model's input budget. Returns the input unchanged
- * when it fits (and nothing was forced) or the window is unknown.
+ * while it fits and nothing has been trimmed yet, or when the window is
+ * unknown.
  *
- * Passes, oldest-first, never touching the protected tail or the user's task:
+ * When the context outgrows the budget the trim state advances one message
+ * at a time, oldest first, never touching the protected tail or the user's
+ * task, until it fits a target well under the budget (room for the calls
+ * that follow):
  *  1. clip long tool output and tool arguments, drop old reasoning;
  *  2. clip them hard;
  *  3. drop the oldest messages, starting the kept history at an assistant
@@ -245,14 +266,19 @@ function sum(tokens: number[], from = 0): number {
 export function fitContext(
   model: BudgetModel,
   ctx: BudgetContext,
-  opts: { force?: boolean } = {},
-): { messages: AgentMessage[]; trimmed: boolean; before: number; after: number } {
+  opts: { force?: boolean; state?: TrimState } = {},
+): { messages: AgentMessage[]; trimmed: boolean; advanced: boolean; before: number; after: number } {
   const messages = [...ctx.messages];
   const budget = inputBudget(model);
-  const before = estimateContextTokens(ctx);
-  if (!budget || (!opts.force && before <= budget)) return { messages, trimmed: false, before, after: before };
+  const st = opts.state ?? newTrimState();
+  // history shrank under the state (edit, compaction): start over
+  if (st.soft > messages.length || st.hard > messages.length || st.cut > messages.length) Object.assign(st, newTrimState());
+  const untouched = st.soft === 0 && st.hard === 0 && st.cut === 0;
+  const full = estimateContextTokens(ctx);
+  if (!budget || (untouched && !opts.force && full <= budget)) {
+    return { messages, trimmed: false, advanced: false, before: full, after: full };
+  }
 
-  const target = Math.floor(budget * (opts.force ? FORCED_TRIM_TARGET : TRIM_TARGET));
   const prefix = (ctx.systemPrompt ? estimateTextTokens(ctx.systemPrompt) : 0) + toolsTokens(ctx.tools);
   const tailStart = Math.max(0, messages.length - PROTECTED_TAIL);
   let lastUser = -1;
@@ -262,32 +288,64 @@ export function fitContext(
       break;
     }
   }
+  const slimmable = (i: number) => i < tailStart && i !== lastUser;
+  const level = (i: number) => (!slimmable(i) ? 0 : i < st.hard ? 2 : i < st.soft ? 1 : 0);
+  // per-message token counts at each clip level, computed on demand
+  const cache: (number | undefined)[][] = [[], [], []];
+  const variant = (i: number, lv: number): AgentMessage => (lv === 0 ? messages[i]! : slim(messages[i]!, lv === 2));
+  const tok = (i: number, lv = level(i)): number => (cache[lv]![i] ??= estimateMessageTokens(variant(i, lv)));
+  const notice = estimateTextTokens(TRIM_NOTICE) + MESSAGE_OVERHEAD_TOKENS;
+  const taskCut = () => lastUser >= 0 && lastUser < st.cut;
+  const total = () => {
+    let t = prefix + (st.cut > 0 ? notice + (taskCut() ? tok(lastUser, 0) : 0) : 0);
+    for (let i = st.cut; i < messages.length; i++) t += tok(i);
+    return t;
+  };
+  const build = (): AgentMessage[] => {
+    const kept: AgentMessage[] = [];
+    if (st.cut > 0) kept.push(noticeMessage(taskCut() ? messages[lastUser] : undefined));
+    for (let i = st.cut; i < messages.length; i++) kept.push(variant(i, level(i)));
+    return kept;
+  };
 
-  let work = messages;
-  for (const hard of [false, true]) {
-    work = work.map((m, i) => (i < tailStart && i !== lastUser ? slim(m, hard) : m));
-    const after = prefix + sum(work.map(estimateMessageTokens));
-    if (after <= target) return { messages: work, trimmed: true, before, after };
+  let after = total();
+  if (!opts.force && after <= budget) {
+    // the trimmed prefix is stable, so the provider's last reading measures
+    // it: trust it when it says more than our estimate
+    const kept = build();
+    after = Math.max(after, estimateContextTokens({ systemPrompt: ctx.systemPrompt, messages: kept, tools: ctx.tools }));
+    if (after <= budget) return { messages: kept, trimmed: true, advanced: false, before: full, after };
+  }
+
+  const target = Math.floor(budget * (opts.force ? FORCED_TRIM_TARGET : TRIM_TARGET));
+  const done = () => ({ messages: build(), trimmed: true, advanced: true, before: full, after });
+
+  // passes 1–2: clip oldest first, one message at a time
+  for (const key of ["soft", "hard"] as const) {
+    while (after > target && st[key] < tailStart) {
+      const i = st[key]++;
+      if (i < st.cut || !slimmable(i)) continue;
+      const lvBefore = key === "soft" ? (i < st.hard ? 2 : 0) : i < st.soft ? 1 : 0;
+      const lvAfter = key === "soft" ? (i < st.hard ? 2 : 1) : 2;
+      after += tok(i, lvAfter) - tok(i, lvBefore);
+    }
+    if (after <= target) return done();
   }
 
   // pass 3: cut the oldest history at an assistant message
-  const tokens = work.map(estimateMessageTokens);
-  const notice = estimateTextTokens(TRIM_NOTICE) + MESSAGE_OVERHEAD_TOKENS;
-  const lastAssistant = work.map((m) => (m as { role?: string }).role).lastIndexOf("assistant");
-  for (let cut = 1; cut <= lastAssistant; cut++) {
-    if ((work[cut] as { role?: string }).role !== "assistant") continue;
-    const keepTask = lastUser >= 0 && lastUser < cut ? tokens[lastUser]! : 0;
-    const after = prefix + notice + keepTask + sum(tokens, cut);
-    if (after <= target || cut === lastAssistant) {
-      work = [noticeMessage(lastUser >= 0 && lastUser < cut ? work[lastUser]! : undefined), ...work.slice(cut)];
-      if (after <= target) return { messages: work, trimmed: true, before, after };
-      break;
-    }
+  const lastAssistant = messages.map((m) => (m as { role?: string }).role).lastIndexOf("assistant");
+  for (let cut = st.cut + 1; cut <= lastAssistant; cut++) {
+    if ((messages[cut] as { role?: string }).role !== "assistant") continue;
+    st.cut = cut;
+    after = total();
+    if (after <= target) return done();
   }
 
   // pass 4: what is left is recent, and still too big — usually one huge
   // tool result (a 256 KB read into a 32k window). Share what room remains
-  // between the tool results, most recent included.
+  // between the tool results, most recent included. Not kept in the state:
+  // it depends on the tail, which changes every call anyway.
+  let work = build();
   const results = work.filter((m) => (m as { role?: string }).role === "toolResult").length;
   if (results) {
     const rest = prefix + sum(work.filter((m) => (m as { role?: string }).role !== "toolResult").map(estimateMessageTokens));
@@ -295,8 +353,8 @@ export function fitContext(
     const perResult = Math.max(600, Math.floor((target - rest) / results));
     work = work.map((m) => ((m as { role?: string }).role === "toolResult" ? clipResult(m, perResult) : m));
   }
-  const after = prefix + sum(work.map(estimateMessageTokens));
-  return { messages: work, trimmed: true, before, after };
+  after = prefix + sum(work.map(estimateMessageTokens));
+  return { messages: work, trimmed: true, advanced: true, before: full, after };
 }
 
 function clipResult(m: AgentMessage, keep: number): AgentMessage {

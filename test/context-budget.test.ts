@@ -16,6 +16,7 @@ import {
   estimateTextTokens,
   fitContext,
   inputBudget,
+  newTrimState,
   outputCap,
 } from "../src/agent/context-budget.js";
 import { compactionInput, summarizeSession } from "../src/agent/compact.js";
@@ -130,6 +131,32 @@ describe("fitContext", () => {
       if ((m as { role: string }).role === "toolResult") expect(callIds.has((m as { toolCallId: string }).toolCallId)).toBe(true);
     }
     expect(fit.after).toBeLessThanOrEqual(inputBudget(model));
+  });
+
+  it("trims oldest first, only as far as needed: recent reads stay whole", () => {
+    const messages: AgentMessage[] = [user("map the app")];
+    for (let i = 0; i < 12; i++) messages.push(call(`r${i}`, { path: `f${i}.ts` }), result(`r${i}`, `file ${i}\n`.padEnd(8000, "x")));
+    messages.push(assistant([{ type: "text", text: "reading" }]));
+    const fit = fitContext(model, { messages });
+    expect(fit.trimmed).toBe(true);
+    const text = (m: AgentMessage) => ((m as unknown as { content: { text?: string }[] }).content[0]!.text ?? "");
+    // the oldest read is clipped, a read just before the protected tail is not
+    expect(text(fit.messages[2]!)).toContain("chars trimmed to save context");
+    expect(text(fit.messages[messages.length - 8]!)).not.toContain("chars trimmed");
+    expect(fit.messages.length).toBe(messages.length);
+  });
+
+  it("keeps sending the same trimmed prefix until the budget is outgrown again", () => {
+    const messages: AgentMessage[] = [user("map the app")];
+    for (let i = 0; i < 12; i++) messages.push(call(`r${i}`, { path: `f${i}.ts` }), result(`r${i}`, "x".repeat(8000)));
+    messages.push(assistant([{ type: "text", text: "reading" }]));
+    const state = newTrimState();
+    const first = fitContext(model, { messages }, { state });
+    expect(first.advanced).toBe(true);
+    const grown = [...messages, user("and one more thing"), assistant([{ type: "text", text: "sure" }])];
+    const second = fitContext(model, { messages: grown }, { state });
+    expect(second.advanced).toBe(false);
+    expect(JSON.stringify(second.messages.slice(0, 10))).toBe(JSON.stringify(first.messages.slice(0, 10)));
   });
 
   it("a single read bigger than the window is clipped with a hint to read in parts", () => {

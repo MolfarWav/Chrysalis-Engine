@@ -18,7 +18,8 @@ import type { UserService } from "../users.js";
 import type { McpRegistry, McpToolInfo } from "../mcp/registry.js";
 import { Type } from "typebox";
 import { log } from "../logger.js";
-import { clampThinkingLevel } from "@earendil-works/pi-ai";
+import { clampThinkingLevel, isContextOverflow, type AssistantMessage } from "@earendil-works/pi-ai";
+import { clampMaxTokens, fitContext } from "./context-budget.js";
 import { readSandboxSettings } from "../sandbox/network.js";
 
 const ADMIN_TOOLS_PROMPT = `You are also the ADMIN agent for this instance: create users with admin_create_user, list them with admin_list_users. New user tokens are shown exactly once.`;
@@ -51,6 +52,9 @@ export interface AgentRunResult {
   stopped?: boolean;
   /** Set when the model stream ended in error (bad key, provider down…). */
   error?: string;
+  /** The provider refused the request as too long for the model's window
+   *  (even after the in-run retry): the session needs compacting. */
+  contextOverflow?: boolean;
 }
 
 /** Live agent progress (WS): reasoning deltas + sequential tool execution. */
@@ -245,6 +249,7 @@ export class UserAgent {
     private agent: Agent,
     readonly sessionId: string,
     private sFile: string,
+    private budget: { force: boolean },
   ) {}
 
   /** Async factory: model resolution requires provider auth state. */
@@ -323,7 +328,22 @@ export class UserAgent {
       model as Parameters<typeof clampThinkingLevel>[0],
       opts.reasoning ?? readUserReasoning(paths, model.reasoning === true),
     );
-    const agent = new Agent({
+    // context budget: trim what is sent when it outgrows the window, and never
+    // ask for more output than the window has left (see context-budget.ts)
+    const budget = { force: false };
+    const agent: Agent = new Agent({
+      transformContext: async (msgs) => {
+        // pi-agent-core's contract: this hook must never throw
+        try {
+          const st = agent.state;
+          const fit = fitContext(st.model, { systemPrompt: st.systemPrompt, messages: msgs, tools: st.tools }, { force: budget.force });
+          if (fit.trimmed) log.info(`[agent:${sessionId}] context trimmed ~${fit.before} → ~${fit.after} tokens (window ${st.model.contextWindow})`);
+          return fit.messages;
+        } catch (e) {
+          log.warn(`[agent:${sessionId}] context trim failed, sending as is: ${(e as Error).message}`);
+          return msgs;
+        }
+      },
       initialState: {
         model,
         systemPrompt: systemPromptFor(username, isAdmin, paths, opts.sandbox) + (opts.mode === "plan" ? PLAN_MODE_PROMPT : ""),
@@ -332,9 +352,18 @@ export class UserAgent {
         // pi-agent-core reads the level from state; undefined = "off"
         ...(level !== "off" ? { thinkingLevel: level } : {}),
       },
-      streamFn: (m, c, o) => svc.streamFn(m, c, o, sessionId),
+      streamFn: (m, c, o) => {
+        const maxTokens = clampMaxTokens(m, c, o?.maxTokens);
+        return svc.streamFn(m, c, maxTokens !== undefined ? { ...o, maxTokens } : o, sessionId);
+      },
     });
-    return new UserAgent(agent, sessionId, sFile);
+    return new UserAgent(agent, sessionId, sFile, budget);
+  }
+
+  /** The model this session runs on, for one-shot calls made on its behalf. */
+  get model(): { ref: string; contextWindow: number; maxTokens: number } {
+    const m = this.agent.state.model;
+    return { ref: `${m.provider}/${m.id}`, contextWindow: m.contextWindow, maxTokens: m.maxTokens };
   }
 
   /** Abort the active run; partial output settles with stopReason "aborted". */
@@ -444,6 +473,26 @@ export class UserAgent {
     try {
       const images = (opts.images ?? []).map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
       await this.agent.prompt(promptText, images.length ? images : undefined);
+      // The provider refused the context as too long: our estimate missed.
+      // Drop the refusal and retry once with a deep trim instead of stopping.
+      const last = this.agent.state.messages.at(-1) as AssistantMessage | undefined;
+      if (last?.role === "assistant" && last.stopReason === "error" && isOverflow(last)) {
+        log.warn(`[agent:${this.sessionId}] context overflow, retrying with a deep trim: ${last.errorMessage}`);
+        this.agent.state.messages = this.agent.state.messages.slice(0, -1);
+        // the refusal usually names the real window: trust it over a catalog
+        // that is missing or larger
+        const named = windowFromError(last.errorMessage);
+        const model = this.agent.state.model;
+        if (named && (!(model.contextWindow > 0) || named < model.contextWindow)) {
+          this.agent.state.model = { ...model, contextWindow: named };
+        }
+        this.budget.force = true;
+        try {
+          await this.agent.continue();
+        } finally {
+          this.budget.force = false;
+        }
+      }
     } finally {
       unsub();
     }
@@ -501,6 +550,7 @@ export class UserAgent {
     const stop = (finalAssistant as { stopReason?: string } | undefined)?.stopReason;
     const errorMessage = (finalAssistant as { errorMessage?: string } | undefined)?.errorMessage;
     const error = stop === "error" ? humanizeProviderError(errorMessage) : undefined;
+    const contextOverflow = stop === "error" && isOverflow(finalAssistant as AssistantMessage);
     // A reasoning model can stop after thinking with no text and no tool
     // call; without this the turn would end in silence. Display only: the
     // session keeps the empty reply so the note never enters model context.
@@ -524,6 +574,7 @@ export class UserAgent {
       ...(resolvedModel?.contextWindow ? { contextWindow: resolvedModel.contextWindow } : {}),
       ...(stop === "aborted" ? { stopped: true } : {}),
       ...(error ? { error } : {}),
+      ...(contextOverflow ? { contextOverflow: true } : {}),
     };
   }
 
@@ -729,6 +780,19 @@ function loadSessionDialogue(sFile: string, model: { api: string; provider: stri
   } catch {
     return [];
   }
+}
+
+/** pi-ai's overflow patterns, plus wordings seen from OpenAI-compatible servers. */
+function isOverflow(m: AssistantMessage): boolean {
+  if (isContextOverflow(m)) return true;
+  return /exceeds the model'?s context length|maximum context length|context length exceeded/i.test(m.errorMessage ?? "");
+}
+
+/** The context window a provider's overflow message states, if it states one. */
+export function windowFromError(message: string | undefined): number | undefined {
+  const m = /(?:maximum context length(?: is| of)?|max(?:imum)? context tokens:?|context length(?: is| of)?|context size(?: is| of)?)\s*\(?([\d,]{4,})/i.exec(message ?? "");
+  const n = m ? Number(m[1]!.replace(/,/g, "")) : NaN;
+  return Number.isFinite(n) && n >= 1024 ? n : undefined;
 }
 
 function agentText(m: AgentMessage | undefined): string {

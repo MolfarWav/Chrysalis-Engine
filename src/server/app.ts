@@ -32,6 +32,7 @@ import type { AuthPrompt, Credential, ProviderAuthInteraction } from "@earendil-
 import { curatedProviders, loadCustomProviders, reservedProviderIds } from "../providers/custom.js";
 import { UserAgent, listSessions, renameSession, archiveSession, sessionDir, isReasoningLevel, type ReasoningLevel } from "../agent/agent.js";
 import { summarizeSession } from "../agent/compact.js";
+import * as agentMemory from "../agent/memory.js";
 import { listConnections, createConnection, updateConnection, deleteConnection, validateConnectionInput, validatePromptFormatInput, readConnections, connectionKeyUsable, type ConnectionInfo } from "../connections.js";
 import { PROMPT_FORMATS, type PromptFormat } from "../providers/prompt-formats.js";
 import {
@@ -2401,6 +2402,69 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     } catch (e) {
       const status = e instanceof HttpError ? e.status : 500;
       return c.json({ error: (e as Error).message }, status as 400 | 404 | 500 | 503);
+    }
+  });
+
+  // ---------- agent memory and skills (the panel on the agent page) ----------
+  // The user editing their own agent's memory: no confirmation card, but every
+  // change is a commit, so it can be undone from history.
+  const memoryError = (c: Context, e: unknown) => c.json({ error: (e as Error).message }, 400);
+
+  app.get("/v1/agent/memory", (c) => {
+    const root = userPaths(dataDir, c.get("user").username).root;
+    return c.json({
+      global: { file: agentMemory.GLOBAL_MEMORY, text: agentMemory.readMemory(root, agentMemory.resolveScope(root, "global")) },
+      apps: agentMemory.listAppMemories(root),
+      skills: agentMemory.listSkills(root),
+    });
+  });
+
+  app.post("/v1/agent/memory", async (c) => {
+    const u = c.get("user");
+    const root = userPaths(dataDir, u.username).root;
+    const body = await c.req.json<{ scope?: string; entry?: string }>().catch(() => ({}) as { scope?: string; entry?: string });
+    try {
+      const scope = agentMemory.resolveScope(root, body.scope);
+      const { line } = agentMemory.appendEntry(root, scope, String(body.entry ?? ""));
+      await git.commitAll(root, u.username, `memory: add to ${scope.label}`).catch(() => undefined);
+      return c.json({ ok: true, line });
+    } catch (e) {
+      return memoryError(c, e);
+    }
+  });
+
+  app.post("/v1/agent/memory/forget", async (c) => {
+    const u = c.get("user");
+    const root = userPaths(dataDir, u.username).root;
+    const body = await c.req.json<{ scope?: string; line?: string }>().catch(() => ({}) as { scope?: string; line?: string });
+    try {
+      const scope = agentMemory.resolveScope(root, body.scope);
+      agentMemory.forgetEntry(root, scope, String(body.line ?? ""));
+      await git.commitAll(root, u.username, `memory: forget from ${scope.label}`).catch(() => undefined);
+      return c.json({ ok: true });
+    } catch (e) {
+      return memoryError(c, e);
+    }
+  });
+
+  app.get("/v1/agent/skills/:scope/:name", (c) => {
+    const root = userPaths(dataDir, c.get("user").username).root;
+    try {
+      return c.json(agentMemory.readSkill(root, c.req.param("scope"), c.req.param("name")));
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 404);
+    }
+  });
+
+  app.delete("/v1/agent/skills/:scope/:name", async (c) => {
+    const u = c.get("user");
+    const root = userPaths(dataDir, u.username).root;
+    try {
+      const file = agentMemory.deleteSkill(root, c.req.param("scope"), c.req.param("name"));
+      await git.commitAll(root, u.username, `skill: delete ${file}`).catch(() => undefined);
+      return c.json({ ok: true });
+    } catch (e) {
+      return memoryError(c, e);
     }
   });
 

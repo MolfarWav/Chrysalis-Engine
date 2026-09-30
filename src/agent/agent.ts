@@ -20,6 +20,7 @@ import { Type } from "typebox";
 import { log } from "../logger.js";
 import { clampThinkingLevel, isContextOverflow, type AssistantMessage } from "@earendil-works/pi-ai";
 import { clampMaxTokens, fitContext, newTrimState } from "./context-budget.js";
+import { appTouched, buildMemoryTools, memoryPromptSection, projectContextFor } from "./memory.js";
 import { readSandboxSettings } from "../sandbox/network.js";
 
 const ADMIN_TOOLS_PROMPT = `You are also the ADMIN agent for this instance: create users with admin_create_user, list them with admin_list_users. New user tokens are shown exactly once.`;
@@ -285,6 +286,7 @@ export class UserAgent {
         ...(opts.mode === "plan" ? { mode: "plan" as const } : {}),
       }),
     ];
+    tools.push(...buildMemoryTools(username, paths, { ...(opts.ask ? { ask: opts.ask } : {}) }));
     if (isAdmin) {
       tools.push(...buildAdminTools(users, {
         ...(opts.settings ? { settings: opts.settings } : {}),
@@ -327,6 +329,7 @@ export class UserAgent {
     // ask for more output than the window has left (see context-budget.ts)
     const budget = { force: false };
     const trim = newTrimState();
+    const shownProjects = new Set<string>();
     const agent: Agent = new Agent({
       transformContext: async (msgs) => {
         // pi-agent-core's contract: this hook must never throw
@@ -342,11 +345,25 @@ export class UserAgent {
       },
       initialState: {
         model,
-        systemPrompt: systemPromptFor(username, isAdmin, paths, opts.sandbox) + (opts.mode === "plan" ? PLAN_MODE_PROMPT : ""),
+        systemPrompt: systemPromptFor(username, isAdmin, paths, opts.sandbox) + memoryPromptSection(paths.root) + (opts.mode === "plan" ? PLAN_MODE_PROMPT : ""),
         tools,
         messages,
         // pi-agent-core reads the level from state; undefined = "off"
         ...(level !== "off" ? { thinkingLevel: level } : {}),
+      },
+      // a project's memory and skills ride on the first tool result that
+      // touches that app, once per agent (see memory.ts)
+      afterToolCall: async (ctx) => {
+        try {
+          const appId = appTouched(ctx.toolCall.name, ctx.args);
+          if (!appId || shownProjects.has(appId)) return undefined;
+          shownProjects.add(appId);
+          const extra = projectContextFor(paths.root, appId);
+          if (!extra) return undefined;
+          return { content: [...(ctx.result.content ?? []), { type: "text", text: `\n\n${extra}` }] };
+        } catch {
+          return undefined;
+        }
       },
       streamFn: (m, c, o) => {
         const maxTokens = clampMaxTokens(m, c, o?.maxTokens);

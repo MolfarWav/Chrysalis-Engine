@@ -46,6 +46,10 @@ export const AGENT_WRITE_DENYLIST: readonly { pattern: RegExp; reason: string }[
   { pattern: /^\.git(\/|$)/, reason: "git internals are managed by the server" },
   { pattern: /^assets-store(\/|$)/i, reason: "asset store is content-addressed (use asset APIs)" },
   { pattern: /^store(\/|$)/i, reason: "plugin store is runtime state managed by services (use store APIs)" },
+  // memory and skills change only through memory_propose / skill_propose,
+  // which the user confirms; a file tool or the shell would skip that
+  { pattern: /^(memory|skills)(\/|$)/i, reason: "memory and skills change only through memory_propose / skill_propose (the user confirms each)" },
+  { pattern: /^apps\/[^/]+\/\.(memory|skills)(\/|$)/i, reason: "memory and skills change only through memory_propose / skill_propose (the user confirms each)" },
 ];
 
 export function agentWriteDenied(relPath: string): string | null {

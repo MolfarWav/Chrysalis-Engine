@@ -163,3 +163,27 @@ export function getSettings(): Promise<{ model: string | null; reasoning: string
 export function listMcp(): Promise<McpServer[]> {
   return api<{ servers: McpServer[] }>("GET", "/v1/mcp").then((r) => r.servers ?? [])
 }
+
+export interface AgentSkill {
+  name: string
+  description: string
+  /** "global" or "app:<id>" */
+  scope: string
+  file: string
+}
+
+export interface AgentMemory {
+  global: { file: string; text: string }
+  apps: Array<{ id: string; file: string; text: string }>
+  skills: AgentSkill[]
+}
+
+export const memoryApi = {
+  get: () => api<AgentMemory>("GET", "/v1/agent/memory"),
+  add: (scope: string, entry: string) => api<{ ok: boolean; line: string }>("POST", "/v1/agent/memory", { scope, entry }),
+  forget: (scope: string, line: string) => api<{ ok: boolean }>("POST", "/v1/agent/memory/forget", { scope, line }),
+  skill: (scope: string, name: string) =>
+    api<{ file: string; text: string }>("GET", `/v1/agent/skills/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`),
+  deleteSkill: (scope: string, name: string) =>
+    api<{ ok: boolean }>("DELETE", `/v1/agent/skills/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`),
+}

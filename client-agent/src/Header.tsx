@@ -4,6 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SidebarSimple, WifiSlash } from "@phosphor-icons/react"
 import { useMemo, type ReactNode } from "react"
 import { useAgent } from "./store"
+import { MemoryPanel } from "./MemoryPanel"
 import { shortModelName } from "@/lib/utils"
 
 export function ComposerSettings(): ReactNode {
@@ -95,6 +96,9 @@ export function Header(): ReactNode {
       </Button>
       <span className="min-w-0 truncate text-sm font-medium">{title?.trim() || "New chat"}</span>
       {wsDown ? <span className="text-destructive ml-auto flex shrink-0 items-center gap-1.5 text-xs" role="status"><WifiSlash size={14} />Reconnecting</span> : null}
+      <div className={wsDown ? "shrink-0" : "ml-auto shrink-0"}>
+        <MemoryPanel />
+      </div>
     </header>
   )
 }

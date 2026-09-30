@@ -47,6 +47,8 @@ export const WRITE_TOOLS = new Set([
   "app_create",
   "app_deps",
   "bash",
+  "memory_propose",
+  "skill_propose",
 ]);
 
 const MAX_READ_BYTES = 256 * 1024;

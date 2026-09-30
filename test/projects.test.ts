@@ -101,6 +101,7 @@ describe("project files", () => {
     const l = projects.createProject(p.root, { title: "Research" });
     projects.putFile(p.root, l, "mock.png", PNG);
     projects.putFile(p.root, l, "notes.md", new TextEncoder().encode("# Notes\n"));
+    expect(projects.cleanFileName("my panel mock.png")).toBe("my-panel-mock.png");
     expect(projects.listFiles(p.root, l).map((f) => [f.name, f.type])).toEqual([["mock.png", "image"], ["notes.md", "text"]]);
     for (const bad of ["style-guide.pdf", "spec.docx", ".env", "..", "run.exe"]) {
       expect(() => projects.putFile(p.root, l, bad, new TextEncoder().encode("x")), bad).toThrow();

@@ -158,7 +158,8 @@ function fileKind(name: string): { type: "image" | "text"; mime: string } | null
 /** A safe file name for a project upload, or an error saying why not. */
 export function cleanFileName(raw: string): string {
   const base = raw.replace(/\\/g, "/").split("/").pop() ?? "";
-  const name = base.normalize("NFC").replace(/[\p{Cc}<>:"|?*]/gu, "").replace(/\s+/g, " ").trim().slice(0, 120);
+  // no spaces: an "@path" mention in a message ends at the first one
+  const name = base.normalize("NFC").replace(/[\p{Cc}<>:"|?*]/gu, "").trim().replace(/\s+/g, "-").slice(0, 120);
   if (!name || name.startsWith(".") || name === ".." || name.includes("/")) throw new ProjectError("that file name is not allowed");
   if (!fileKind(name)) {
     throw new ProjectError(`only images (png, jpg, gif, webp) and text files (md, txt, json, csv, …) can be added: "${name}" is neither`, 415);

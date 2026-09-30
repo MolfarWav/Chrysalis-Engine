@@ -1,0 +1,51 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css"><style>
+.thread{flex:1;overflow:auto;padding:26px 0;display:flex;flex-direction:column;align-items:center;gap:18px}
+.col{width:690px;display:flex;flex-direction:column;gap:16px}
+.u{align-self:flex-end;background:#262629;border-radius:18px;padding:9px 15px;max-width:520px}
+.a{color:#e4e4e4}
+.ctx{border:1px solid #26262a;background:#111113;border-radius:12px;padding:10px 12px;font-size:12.5px;color:#a9a9ae}
+.ctx b{color:#ddd;font-weight:600}
+.tool{font-size:12.5px;color:#8f8f95;display:flex;gap:8px;align-items:center}
+.tool code{background:#1a1a1d;padding:1px 6px;border-radius:5px;color:#c9c9ce}
+.comp{width:690px;margin:0 auto 22px;border:1px solid #2a2a2e;border-radius:22px;padding:10px 12px;background:#0f0f11}
+.pchips{display:flex;gap:6px;margin-bottom:8px}
+.pc{font-size:12px;padding:3px 9px;border-radius:99px;background:#1c2a22;color:#78d6a2;border:1px solid #24402f}
+.fc{font-size:12px;padding:3px 9px;border-radius:99px;background:#1f1f23;color:#c9c9ce;border:1px solid #2a2a2f}
+.ph{color:#6f6f75;padding:4px 4px 12px}
+.bar{display:flex;align-items:center;gap:10px;font-size:13px;color:#ddd}
+.bar .r{margin-left:auto;color:#8a8a90;font-size:12px}
+</style></head><body>
+<div class="side">
+ <div class="brand">Chrysalis</div>
+ <div class="btn">＋ New chat</div>
+ <div class="search">🔍 Search chats</div>
+ <div class="sec"><span>Projects</span><span>＋</span></div>
+ <div class="proj">▸ 🎭 Roleplay <span class="tag">app</span></div>
+ <div class="proj active">▾ 📜 Archivarius <span class="tag free">plugin</span></div>
+ <div class="chat on">onTick never fires</div>
+ <div class="chat">Curator pass design</div>
+ <div class="proj">▸ 🎴 Visual Novel <span class="tag">app</span></div>
+ <div class="proj">▸ 💡 Ideas <span class="tag free">free</span></div>
+ <div class="sec"><span>Chats</span></div>
+ <div class="chat" style="padding-left:8px">Why is compaction slow</div>
+</div>
+<div class="main">
+ <div class="top"><span class="crumb">Archivarius /</span> onTick never fires</div>
+ <div class="thread"><div class="col">
+  <div class="ctx">📁 <b>Project context attached:</b> instructions (PROJECT.md) · 3 memory entries · 4 files listed: <i>store-schema.md, vault-example.md, log-2026-09-29.txt, panel-mock.png</i></div>
+  <div class="u">Архіваріус досі мовчить, vault-chats порожній</div>
+  <div class="tool">✓ <code>skill_load plugin-silent-failure</code></div>
+  <div class="tool">✓ <code>read_file projects/archivarius/files/log-2026-09-29.txt</code></div>
+  <div class="tool">✓ <code>grep "export function" plugins/archivarius/plugin.js</code></div>
+  <div class="a">Знайшов: <code>onTick(host)</code> приймає один аргумент, тож рушій передає туди <code>ctx</code>, і <code>host.fs</code> не існує. Лог із файлів проєкту це підтверджує: <code>archivarius onTick failed: cannot read property 'write' of undefined</code>. Виправляю сигнатуру і додаю heartbeat.</div>
+ </div></div>
+ <div class="comp">
+  <div class="pchips"><span class="pc">📁 Archivarius</span><span class="fc">🖼️ panel-mock.png ✕</span></div>
+  <div class="ph">Send a message…</div>
+  <div class="bar">＋ &nbsp; qwen-4-max ▾ &nbsp; Full ▾ <span class="r">12.3k tok · $0.004 &nbsp; ◔</span></div>
+ </div>
+</div>
+<div class="note n-l" style="left:285px;top:176px">Чати згруплені за проєктами</div>
+<div class="note n-b" style="left:560px;top:28px">Нова сесія сама отримує інструкції, пам'ять і список файлів проєкту</div>
+<div class="note n-b" style="left:1010px;top:684px">Файл проєкту можна прикріпити до повідомлення одним кліком</div>
+</body></html>

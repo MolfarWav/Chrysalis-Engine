@@ -1,0 +1,20 @@
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0b;color:#ececec;font:14px/1.45 Inter,system-ui,sans-serif;display:flex;height:100vh;overflow:hidden}
+.side{width:268px;background:#18181a;border-right:1px solid #232326;padding:14px 10px;display:flex;flex-direction:column;gap:4px;flex-shrink:0}
+.brand{font-weight:600;padding:2px 8px 12px}
+.btn{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;color:#ddd}
+.search{background:#232326;border-radius:8px;padding:7px 10px;color:#8a8a90;margin:4px 0 10px}
+.sec{font-size:11px;color:#77777d;text-transform:uppercase;letter-spacing:.06em;padding:10px 8px 4px;display:flex;justify-content:space-between}
+.proj{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;color:#ddd}
+.proj.active{background:#262629}
+.tag{font-size:10px;padding:1px 6px;border-radius:99px;background:#26352c;color:#6fd39a;margin-left:auto}
+.tag.free{background:#2a2a3a;color:#9ea0ff}
+.chat{padding:5px 8px 5px 32px;color:#a9a9ae;border-radius:8px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat.on{background:#232326;color:#fff}
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.top{height:48px;display:flex;align-items:center;gap:10px;padding:0 22px;border-bottom:1px solid #1d1d20;color:#ddd}
+.crumb{color:#77777d}
+.pill{font-size:12px;padding:3px 10px;border:1px solid #2c2c30;border-radius:99px;color:#bbb}
+.note{position:fixed;background:#ffd84d;color:#1b1b1b;font:600 12px/1.3 Inter,sans-serif;padding:6px 9px;border-radius:8px;max-width:230px;box-shadow:0 4px 18px #0008}
+.note:before{content:"";position:absolute;width:10px;height:10px;background:#ffd84d;transform:rotate(45deg)}
+.n-l:before{left:-4px;top:12px}.n-t:before{top:-4px;left:18px}.n-b:before{bottom:-4px;left:18px}.n-r:before{right:-4px;top:12px}

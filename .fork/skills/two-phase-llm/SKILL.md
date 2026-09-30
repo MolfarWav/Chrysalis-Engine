@@ -1,6 +1,6 @@
 ---
 name: two-phase-llm
-description: Use when a plugin route, onTick or other hook, or a plugin tool must call a model (host.llm), embeddings or the web (host.net). Also when such a call "returns nothing", writes stale data or runs twice. Triggers: "плагін має викликати модель", "запит до LLM з плагіна", "host.llm", "дані пишуться двічі".
+description: Use when a plugin route, hook (onTick…) or tool must call a model (host.llm), embeddings or the web (host.net). Also when such a call "returns nothing", writes stale data or runs twice. Triggers: "плагін має викликати модель", "запит до LLM з плагіна", "host.llm", "дані пишуться двічі".
 ---
 
 # Calling a model (or the web) from a plugin

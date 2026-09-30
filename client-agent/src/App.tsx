@@ -6,13 +6,14 @@ import {
   type ThreadMessageLike,
 } from "@assistant-ui/react"
 import { Thread } from "@/components/assistant-ui/elements/thread.aui"
-import { ThreadList } from "@/components/assistant-ui/elements/thread-list.aui"
 import { useEffect, useMemo, type ReactNode } from "react"
 import type { ReadonlyJSONObject } from "assistant-stream/utils"
 import { Dialog } from "@base-ui/react/dialog"
 import { X } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import { Header } from "./Header"
+import { ProjectPage } from "./ProjectPage"
+import { Sidebar } from "./Sidebar"
 import { useAgent } from "./store"
 import { AgentToolFallback, toolConfig } from "./tools"
 import { visibleParts, type Msg } from "./runs"
@@ -85,6 +86,7 @@ export default function App(): ReactNode {
   const sidebarOpen = useAgent((s) => s.sidebarOpen)
   const setSidebar = useAgent((s) => s.setSidebar)
   const sidebarPinned = useAgent((s) => s.sidebarPinned)
+  const view = useAgent((s) => s.view)
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 768px)")
@@ -152,7 +154,7 @@ export default function App(): ReactNode {
       <div className="bg-background text-foreground flex h-dvh overflow-hidden">
         <aside aria-label="Conversations" className={`bg-sidebar text-sidebar-foreground w-64 shrink-0 flex-col border-r ${sidebarPinned ? "hidden md:flex" : "hidden"}`}>
           <div className="flex h-12 shrink-0 items-center px-4 text-sm font-semibold">Chrysalis</div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-2"><ThreadList /></div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-2"><Sidebar /></div>
         </aside>
         <Dialog.Root open={sidebarOpen} onOpenChange={setSidebar}>
           <Dialog.Portal>
@@ -162,12 +164,12 @@ export default function App(): ReactNode {
                 <Dialog.Title className="text-sm font-semibold">Conversations</Dialog.Title>
                 <Dialog.Close render={<Button variant="ghost" size="icon" aria-label="Close sidebar" />}><X size={18} /></Dialog.Close>
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto p-2"><ThreadList /></div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-2"><Sidebar /></div>
             </Dialog.Popup>
           </Dialog.Portal>
         </Dialog.Root>
         <main className="flex min-h-0 min-w-0 flex-grow flex-col overflow-hidden">
-          <Header />
+          {view.kind === "chat" ? <Header /> : null}
           {banner ? (
             <div
               className={`flex items-center justify-between gap-2 border-b px-3 py-1.5 text-xs ${
@@ -182,7 +184,7 @@ export default function App(): ReactNode {
               </button>
             </div>
           ) : null}
-          <Thread components={{ ToolFallback: AgentToolFallback }} />
+          {view.kind === "project" ? <ProjectPage key={view.id} id={view.id} /> : <Thread components={{ ToolFallback: AgentToolFallback }} />}
         </main>
       </div>
     </AssistantRuntimeProvider>

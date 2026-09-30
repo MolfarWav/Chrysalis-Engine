@@ -7,6 +7,7 @@ import {
   getSettings,
   listMcp,
   listModels,
+  projectsApi,
   setModelsShown,
   sendAgent,
   sessionsApi,
@@ -18,6 +19,8 @@ import {
   type EngineSession,
   type EngineUsage,
   type McpServer,
+  type ProjectDetail,
+  type ProjectSummary,
 } from "./api"
 import { applyStreamEvent, msgsFromRuns, partsFromResponse, uid, type Msg, type PartData } from "./runs"
 import { createStreamDeltaBatcher, type StreamEvent } from "./streaming"
@@ -63,6 +66,11 @@ export function sessionSpend(runs: readonly EngineRun[]): SessionSpend | null {
   return any ? { tokens, cost, unpriced } : null
 }
 
+export type View = { kind: "chat" } | { kind: "project"; id: string }
+
+/** Session key of a chat that has no id yet. */
+const NEW_KEY = "new"
+
 export interface AgentState {
   sessions: EngineSession[]
   sessionId: string | null
@@ -75,8 +83,25 @@ export interface AgentState {
   modelsFiltered: boolean
   /** star a model into the short list, or take it out */
   setModelShown: (ref: string, shown: boolean) => Promise<void>
+  /** the global pick, used by chats outside a project */
   model: string | null
   reasoning: string
+  /** per-chat model/reasoning picks inside projects, keyed by session id
+   *  ("new" for a chat not created yet); a project's default is never
+   *  overwritten by a pick in a chat */
+  sessionModels: Record<string, string>
+  sessionReasoning: Record<string, string>
+  projects: ProjectSummary[]
+  refreshProjects: () => Promise<void>
+  /** full detail per project id, for the context line and the project page */
+  projectDetails: Record<string, ProjectDetail>
+  loadProject: (id: string, force?: boolean) => Promise<ProjectDetail | null>
+  setProjectDetail: (d: ProjectDetail) => void
+  view: View
+  /** project a not-yet-created chat will start in */
+  draftProject: string | null
+  openProject: (id: string) => void
+  showChat: () => void
   mode: "normal" | "plan" | "accept"
   wsDown: boolean
   usage: EngineUsage | null
@@ -94,7 +119,7 @@ export interface AgentState {
   open: (id: string) => Promise<void>
   reloadCurrent: () => Promise<void>
   editAt: (at: number, text: string) => Promise<void>
-  newChat: () => void
+  newChat: (project?: string) => void
   send: (text: string, images?: Array<{ data: string; mimeType: string }>, urls?: string[]) => Promise<void>
   stop: () => Promise<void>
   answer: (text: string) => Promise<void>
@@ -145,6 +170,63 @@ const storedMode = (): AgentState["mode"] => {
  *  chat, taking the composer draft keyed to that thread with it. */
 const rememberSession = (id: string | null): void => prefs.set("agent-ui-session", id ?? "")
 
+function readMap(key: string): Record<string, string> {
+  try {
+    const v: unknown = JSON.parse(prefs.get(key) ?? "{}")
+    if (!v || typeof v !== "object" || Array.isArray(v)) return {}
+    return Object.fromEntries(Object.entries(v).filter((e): e is [string, string] => typeof e[1] === "string"))
+  } catch {
+    return {}
+  }
+}
+
+const writeMap = (key: string, map: Record<string, string>): void => prefs.set(key, JSON.stringify(map))
+
+const without = (map: Record<string, string>, key: string): Record<string, string> => {
+  if (!(key in map)) return map
+  const { [key]: _gone, ...rest } = map
+  return rest
+}
+
+type ModelView = Pick<
+  AgentState,
+  "sessions" | "sessionId" | "draftProject" | "projects" | "model" | "reasoning" | "sessionModels" | "sessionReasoning" | "models"
+>
+
+/** The project the current chat belongs to: the open session's own, or the
+ *  one a new chat was started in. */
+export function currentProjectId(s: Pick<AgentState, "sessions" | "sessionId" | "draftProject">): string | null {
+  if (!s.sessionId) return s.draftProject
+  const row = s.sessions.find((x) => x.sessionId === s.sessionId)
+  // a chat the list has not caught up with yet is the one just started
+  return row ? (row.project ?? null) : s.draftProject
+}
+
+/** The model the current chat runs on: a pick made in this chat, else the
+ *  project's default, else the global pick. Outside a project, the global pick. */
+export function effectiveModel(s: ModelView): string | null {
+  const pid = currentProjectId(s)
+  if (!pid) return s.model
+  const project = s.projects.find((p) => p.id === pid)
+  return s.sessionModels[s.sessionId ?? NEW_KEY] ?? project?.model ?? s.model
+}
+
+/** Reasoning level for the current chat, same order as the model. A level the
+ *  effective model does not offer (a project default switched to another
+ *  model) falls back to that model's first one. */
+export function effectiveReasoning(s: ModelView): string {
+  const pid = currentProjectId(s)
+  let r = s.reasoning
+  if (pid) {
+    const project = s.projects.find((p) => p.id === pid)
+    r = s.sessionReasoning[s.sessionId ?? NEW_KEY] ?? project?.reasoning ?? s.reasoning
+  }
+  const ref = effectiveModel(s)
+  const mdl = ref ? s.models.find((x) => `${x.provider}/${x.modelId}` === ref) : undefined
+  if (mdl && r && !mdl.reasoningLevels.includes(r)) return mdl.reasoningLevels[0] ?? ""
+  return r
+}
+
 let liveId: string | null = null
 
 export const useAgent = create<AgentState>()((set, get) => {
@@ -159,6 +241,12 @@ export const useAgent = create<AgentState>()((set, get) => {
     modelsFiltered: false,
     model: prefs.get("agent-ui-model"),
     reasoning: prefs.get("agent-ui-reasoning") ?? "",
+    sessionModels: readMap("agent-ui-session-models"),
+    sessionReasoning: readMap("agent-ui-session-reasoning"),
+    projects: [],
+    projectDetails: {},
+    view: { kind: "chat" },
+    draftProject: null,
     mode: storedMode(),
     wsDown: false,
     usage: null,
@@ -179,7 +267,7 @@ export const useAgent = create<AgentState>()((set, get) => {
       } catch (e) {
         set({ banner: { kind: "error", text: e instanceof Error ? e.message : String(e) } })
       }
-      await Promise.all([get().refreshSessions(), get().refreshMcp()])
+      await Promise.all([get().refreshSessions(), get().refreshMcp(), get().refreshProjects()])
       const last = prefs.get("agent-ui-session")
       if (last && !get().sessionId && get().sessions.some((x) => x.sessionId === last)) await get().open(last)
     },
@@ -191,6 +279,31 @@ export const useAgent = create<AgentState>()((set, get) => {
         // an unauthed or down engine keeps the list it had; the banner says why
       }
     },
+
+    refreshProjects: async () => {
+      try {
+        set({ projects: await projectsApi.list() })
+      } catch {
+        // the sidebar keeps the list it had
+      }
+    },
+
+    loadProject: async (id, force) => {
+      const cached = get().projectDetails[id]
+      if (cached && !force) return cached
+      try {
+        const d = await projectsApi.get(id)
+        set((st) => ({ projectDetails: { ...st.projectDetails, [id]: d } }))
+        return d
+      } catch {
+        return cached ?? null
+      }
+    },
+
+    setProjectDetail: (d) => set((st) => ({ projectDetails: { ...st.projectDetails, [d.id]: d } })),
+
+    openProject: (id) => set({ view: { kind: "project", id }, sidebarOpen: false }),
+    showChat: () => set({ view: { kind: "chat" } }),
 
     refreshMcp: async () => {
       try {
@@ -204,7 +317,7 @@ export const useAgent = create<AgentState>()((set, get) => {
       if (get().running) await get().stop()
       streamDeltaBatcher.reset()
       rememberSession(id)
-      set({ sessionId: id, msgs: [], banner: null, ask: null, sidebarOpen: false })
+      set({ sessionId: id, draftProject: null, view: { kind: "chat" }, msgs: [], banner: null, ask: null, sidebarOpen: false })
       try {
         const r = await sessionsApi.get(id)
         if (get().sessionId === id) set({ msgs: msgsFromRuns(r.runs ?? []), spend: sessionSpend(r.runs ?? []) })
@@ -239,11 +352,26 @@ export const useAgent = create<AgentState>()((set, get) => {
       await get().send(text)
     },
 
-    newChat: () => {
+    newChat: (project) => {
       if (get().running) void get().stop()
       streamDeltaBatcher.reset()
       rememberSession(null)
-      set({ sessionId: null, msgs: [], spend: null, banner: null, ask: null, sidebarOpen: false })
+      const sessionModels = without(get().sessionModels, NEW_KEY)
+      const sessionReasoning = without(get().sessionReasoning, NEW_KEY)
+      writeMap("agent-ui-session-models", sessionModels)
+      writeMap("agent-ui-session-reasoning", sessionReasoning)
+      set({
+        sessionId: null,
+        draftProject: project ?? null,
+        view: { kind: "chat" },
+        sessionModels,
+        sessionReasoning,
+        msgs: [],
+        spend: null,
+        banner: null,
+        ask: null,
+        sidebarOpen: false,
+      })
     },
 
     send: async (text, images, urls) => {
@@ -277,16 +405,19 @@ export const useAgent = create<AgentState>()((set, get) => {
         usage: null,
       })
       try {
+        const project = s.sessionId ? null : currentProjectId(s)
         const res: AgentResponse = await sendAgent({
           message: text,
           sessionId: s.sessionId ?? undefined,
-          model: s.model ?? undefined,
-          reasoning: s.reasoning || undefined,
+          ...(project ? { project } : {}),
+          model: effectiveModel(s) ?? undefined,
+          reasoning: effectiveReasoning(s) || undefined,
           mode: s.mode,
           images: images?.length ? images : undefined,
         })
         streamDeltaBatcher.reset()
         rememberSession(res.sessionId)
+        adoptSessionKey(res.sessionId)
         const finalParts = partsFromResponse(res)
         set((st) => ({
           msgs: st.msgs.map((m) => (m.id === id ? { ...m, parts: finalParts, streaming: false } : m)),
@@ -360,7 +491,11 @@ export const useAgent = create<AgentState>()((set, get) => {
       try {
         await sessionsApi.remove(id)
         const rest = get().sessions.filter((x) => x.sessionId !== id)
-        set({ sessions: rest })
+        const sessionModels = without(get().sessionModels, id)
+        const sessionReasoning = without(get().sessionReasoning, id)
+        writeMap("agent-ui-session-models", sessionModels)
+        writeMap("agent-ui-session-reasoning", sessionReasoning)
+        set({ sessions: rest, sessionModels, sessionReasoning })
         if (get().sessionId === id) {
           rememberSession(null)
           set({ sessionId: null, msgs: [], spend: null })
@@ -375,6 +510,14 @@ export const useAgent = create<AgentState>()((set, get) => {
       if (!sid || get().running) return
       try {
         const r = await sessionsApi.compact(sid)
+        if (r.sessionId !== sid) {
+          // the folded chat carries on under a new id: keep this chat's picks
+          const { sessionModels, sessionReasoning } = get()
+          const m = sessionModels[sid]
+          const re = sessionReasoning[sid]
+          if (m) updateMaps({ sessionModels: { ...sessionModels, [r.sessionId]: m } })
+          if (re) updateMaps({ sessionReasoning: { ...sessionReasoning, [r.sessionId]: re } })
+        }
         await get().refreshSessions()
         await get().open(r.sessionId)
         set({ banner: { kind: "info", text: `Compacted ${r.runsBefore} runs` } })
@@ -384,9 +527,20 @@ export const useAgent = create<AgentState>()((set, get) => {
     },
 
     setModel: (m) => {
+      const s = get()
+      const mdl = s.models.find((x) => `${x.provider}/${x.modelId}` === m)
+      if (currentProjectId(s)) {
+        // inside a project the pick belongs to this chat; the project keeps its default
+        const key = s.sessionId ?? NEW_KEY
+        updateMaps({ sessionModels: { ...s.sessionModels, [key]: m } })
+        const now = effectiveReasoning(get())
+        if (mdl && !mdl.reasoningLevels.includes(now)) {
+          updateMaps({ sessionReasoning: { ...get().sessionReasoning, [key]: mdl.reasoningLevels[0] ?? "" } })
+        }
+        return
+      }
       prefs.set("agent-ui-model", m)
       set({ model: m })
-      const mdl = get().models.find((x) => `${x.provider}/${x.modelId}` === m)
       if (mdl && !mdl.reasoningLevels.includes(get().reasoning)) {
         const def = mdl.reasoningLevels[0] ?? ""
         prefs.set("agent-ui-reasoning", def)
@@ -405,6 +559,11 @@ export const useAgent = create<AgentState>()((set, get) => {
     },
 
     setReasoning: (r) => {
+      const s = get()
+      if (currentProjectId(s)) {
+        updateMaps({ sessionReasoning: { ...s.sessionReasoning, [s.sessionId ?? NEW_KEY]: r } })
+        return
+      }
       prefs.set("agent-ui-reasoning", r)
       set({ reasoning: r })
     },
@@ -422,6 +581,24 @@ export const useAgent = create<AgentState>()((set, get) => {
     setBanner: (b) => set({ banner: b }),
   }
 })
+
+function updateMaps(patch: Partial<Pick<AgentState, "sessionModels" | "sessionReasoning">>): void {
+  if (patch.sessionModels) writeMap("agent-ui-session-models", patch.sessionModels)
+  if (patch.sessionReasoning) writeMap("agent-ui-session-reasoning", patch.sessionReasoning)
+  useAgent.setState(patch)
+}
+
+/** The engine names a new chat only when it answers: the picks made before
+ *  that move from the "new" key to the real id. */
+function adoptSessionKey(id: string): void {
+  const { sessionModels, sessionReasoning } = useAgent.getState()
+  const patch: Partial<Pick<AgentState, "sessionModels" | "sessionReasoning">> = {}
+  const m = sessionModels[NEW_KEY]
+  if (m) patch.sessionModels = { ...without(sessionModels, NEW_KEY), [id]: sessionModels[id] ?? m }
+  const r = sessionReasoning[NEW_KEY]
+  if (r !== undefined) patch.sessionReasoning = { ...without(sessionReasoning, NEW_KEY), [id]: sessionReasoning[id] ?? r }
+  if (patch.sessionModels || patch.sessionReasoning) updateMaps(patch)
+}
 
 // ---- WS feed: text deltas + lifecycle events for the live run ----
 
@@ -485,6 +662,9 @@ export function connectWs(): void {
       // dropped and the reply would land all at once at the end.
       if (st.sessionId === null && st.running) {
         rememberSession(payload.sessionId ?? null)
+        // the chat's project and picks must already follow the new id when the
+        // state flips, or the model would fall back to the global one mid-run
+        if (payload.sessionId) adoptSessionKey(payload.sessionId)
         useAgent.setState({ sessionId: payload.sessionId })
         // the thread now exists engine-side — pull it into the sidebar now
         // rather than at the end of the run, which for a long agent turn is

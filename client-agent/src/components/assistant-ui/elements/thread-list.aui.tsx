@@ -40,7 +40,7 @@ export const ThreadList: FC = () => {
   );
 };
 
-const ThreadListArchived: FC = () => {
+export const ThreadListArchived: FC = () => {
   const [open, setOpen] = useState(false);
   const count = useAuiState((s) => s.threads.archivedThreadIds.length);
   if (count === 0) return null;
@@ -138,9 +138,13 @@ const dateGroupLabel = (
 
 type ThreadListGroup = { label: string; indices: number[] };
 
-const ThreadListItemGroups: FC<{ searchQuery?: string }> = ({
-  searchQuery = "",
-}) => {
+/** Chats grouped by day. `include` narrows it to some of the threads (the
+ *  sidebar's "Chats" section leaves out the ones that live in a project). */
+export const ThreadListItemGroups: FC<{
+  searchQuery?: string;
+  include?: (threadId: string) => boolean;
+  emptyLabel?: boolean;
+}> = ({ searchQuery = "", include, emptyLabel = true }) => {
   const threadIds = useAuiState((s) => s.threads.threadIds);
   const threadItems = useAuiState((s) => s.threads.threadItems);
 
@@ -151,6 +155,7 @@ const ThreadListItemGroups: FC<{ searchQuery?: string }> = ({
     const dates = threadIds.map((id) => itemsById.get(id)?.lastMessageAt);
     const filteredIndices = threadIds
       .map((id, index) => ({ id, index }))
+      .filter(({ id }) => !include || include(id))
       .filter(
         ({ id }) =>
           !query ||
@@ -184,9 +189,10 @@ const ThreadListItemGroups: FC<{ searchQuery?: string }> = ({
       }
     }
     return { filteredIndices, groups: result };
-  }, [threadIds, threadItems, query]);
+  }, [threadIds, threadItems, query, include]);
 
   if (query && filteredIndices.length === 0) {
+    if (!emptyLabel) return null;
     return (
       <div
         data-slot="aui_thread-list-empty"

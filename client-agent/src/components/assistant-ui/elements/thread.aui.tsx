@@ -5,7 +5,6 @@ import { ContextActions } from "@/ContextActions";
 
 import {
   ComposerAddAttachment,
-  ComposerAttachments,
   UserMessageAttachments,
 } from "@/components/assistant-ui/elements/attachment.aui";
 import { ContextDisplay } from "@/components/assistant-ui/elements/context-display";
@@ -44,7 +43,8 @@ import {
 } from "@assistant-ui/react";
 import { ArrowDown, ArrowUp, Check, CaretLeft, CaretRight, Copy, DownloadSimple, Chat, Microphone, DotsThree, PencilSimple, ArrowsClockwise, Square } from "@phosphor-icons/react";
 import { useEnterSends } from "@/hooks/use-touch-ui";
-import { useAgent as useAgentStore } from "@/store";
+import { currentProjectId, effectiveModel, useAgent as useAgentStore } from "@/store";
+import { ComposerProjectRow, ProjectAttachButton, ProjectContextLine } from "@/ProjectChat";
 import {
   createContext,
   useContext,
@@ -185,6 +185,7 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
           isEmpty && "justify-center",
         )}
       >
+        <ProjectContextLine />
         <AuiIf condition={isNewChatView}>
           <Welcome />
         </AuiIf>
@@ -266,14 +267,20 @@ const RECENT_LIMIT = 5;
 const ThreadWelcomeRecents: FC = () => {
   const threadIds = useAuiState((s) => s.threads.threadIds);
   const isLoading = useAuiState((s) => s.threads.isLoading);
-  const recent = threadIds.slice(0, RECENT_LIMIT);
+  // a new chat in a project offers that project's chats; a plain one, any
+  const project = useAgentStore(currentProjectId);
+  const sessions = useAgentStore((s) => s.sessions);
+  const recent = threadIds
+    .map((id, index) => ({ id, index }))
+    .filter(({ id }) => !project || sessions.find((x) => x.sessionId === id)?.project === project)
+    .slice(0, RECENT_LIMIT);
   if (isLoading || recent.length === 0) return null;
 
   return (
     <div className="aui-thread-welcome-recents fade-in slide-in-from-bottom-2 animate-in fill-mode-both mt-6 flex w-full flex-col items-center gap-2 duration-200">
       <span className="text-muted-foreground text-xs font-medium">Recent chats</span>
       <ThreadListPrimitive.Root className="flex flex-wrap items-center justify-center gap-1.5">
-        {recent.map((id, index) => (
+        {recent.map(({ id, index }) => (
           <ThreadListPrimitive.ItemByIndex
             key={id}
             index={index}
@@ -333,7 +340,7 @@ const ThreadSuggestionItem: FC = () => {
  *  model's window — engine-reported numbers only; hidden while unknown. */
 const ComposerContextRing: FC = () => {
   const usage = useAgentStore((s) => s.usage)
-  const model = useAgentStore((s) => s.model)
+  const model = useAgentStore(effectiveModel)
   const models = useAgentStore((s) => s.models)
   if (!usage) return null
   // no model picked: the engine ran the first shown one
@@ -424,7 +431,7 @@ const Composer: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
             data-slot="aui_composer-shell"
             className="border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]"
           >
-            <ComposerAttachments />
+            <ComposerProjectRow />
             <ComposerPrimitive.Input
               placeholder="Send a message..."
               className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base leading-6 outline-none"
@@ -450,6 +457,7 @@ const ComposerAction: FC = () => {
     <div className="aui-composer-action-wrapper relative flex items-center justify-between gap-1">
       <div className="flex min-w-0 flex-1 items-center gap-1">
         <ComposerAddAttachment />
+        <ProjectAttachButton />
         <ComposerSettings />
       </div>
       <div className="flex shrink-0 items-center gap-1.5">

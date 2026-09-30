@@ -7,6 +7,8 @@ export interface EngineSession {
   lastAt: number | null
   title?: string | null
   archived?: boolean
+  /** project id ("app:<id>" | "project:<name>") the chat was started in */
+  project?: string | null
 }
 
 export interface EngineTool {
@@ -84,6 +86,8 @@ export interface EngineModel {
   /** The pickers offer it (Settings > Models); every model is shown while
    *  nothing is chosen. */
   shown: boolean
+  /** the model accepts image input */
+  images: boolean
 }
 
 export interface McpServer {
@@ -149,6 +153,8 @@ export interface SendInput {
   model?: string
   reasoning?: string
   images?: Array<{ data: string; mimeType: string }>
+  /** only honored for a new session (no sessionId) */
+  project?: string
 }
 
 export function sendAgent(input: SendInput): Promise<AgentResponse> {
@@ -226,4 +232,109 @@ export const memoryApi = {
     api<{ file: string; text: string }>("GET", `/v1/agent/skills/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`),
   deleteSkill: (scope: string, name: string) =>
     api<{ ok: boolean }>("DELETE", `/v1/agent/skills/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`),
+}
+
+export interface ProjectSummary {
+  /** "app:<id>" | "project:<name>" */
+  id: string
+  kind: "app" | "free"
+  name: string
+  title: string
+  /** emoji */
+  icon: string | null
+  /** "app" for apps, else e.g. "free" or "plugin" */
+  tag: string
+  /** "provider/id" */
+  model: string | null
+  reasoning: string | null
+  files: number
+  bytes: number
+}
+
+export interface ProjectFile {
+  name: string
+  type: "image" | "text"
+  mime: string
+  size: number
+  modified: number
+}
+
+export interface ProjectDetail extends ProjectSummary {
+  /** workspace-relative */
+  paths: { instructions: string; files: string; memory: string }
+  instructions: string
+  /** markdown; entries are lines starting "- " */
+  memory: string
+  skills: AgentSkill[]
+  fileList: ProjectFile[]
+}
+
+export interface ProjectUpdate {
+  instructions?: string
+  title?: string
+  model?: string | null
+  reasoning?: string | null
+  icon?: string
+  tag?: string
+}
+
+/** Raw-body requests (file upload, zip import): same error reading as api(). */
+async function apiRaw<T>(method: string, p: string, body: Blob): Promise<T> {
+  let res: Response
+  try {
+    res = await fetch(p, { method, body })
+  } catch {
+    throw new Error("Connection lost. Is the engine running?")
+  }
+  const text = await res.text()
+  let json: unknown = null
+  try {
+    json = text ? JSON.parse(text) : null
+  } catch {
+    json = null
+  }
+  if (!res.ok) {
+    const errBody = (json as { error?: unknown } | null)?.error
+    const msg =
+      (typeof errBody === "string" ? errBody : (errBody as { message?: string } | undefined)?.message) ||
+      `HTTP ${res.status}`
+    throw new Error(msg)
+  }
+  return json as T
+}
+
+const pidPath = (pid: string) => `/v1/projects/${encodeURIComponent(pid)}`
+
+export const projectsApi = {
+  list: () => api<{ projects: ProjectSummary[] }>("GET", "/v1/projects").then((r) => r.projects ?? []),
+  get: (pid: string) => api<ProjectDetail>("GET", pidPath(pid)),
+  create: (input: { title: string; icon?: string; tag?: string }) =>
+    api<{ ok: boolean; id: string }>("POST", "/v1/projects", input),
+  update: (pid: string, patch: ProjectUpdate) => api<ProjectDetail>("PUT", pidPath(pid), patch),
+  remove: (pid: string) => api<{ ok: boolean }>("DELETE", pidPath(pid)),
+  importZip: (zip: Blob, name?: string) =>
+    apiRaw<{ ok: boolean; id: string }>("POST", `/v1/projects/import${name ? `?name=${encodeURIComponent(name)}` : ""}`, zip),
+  putFile: (pid: string, file: File) =>
+    apiRaw<{ ok: boolean; file: ProjectFile }>("PUT", `${pidPath(pid)}/files/${encodeURIComponent(file.name)}`, file),
+  deleteFile: (pid: string, name: string) => api<{ ok: boolean }>("DELETE", `${pidPath(pid)}/files/${encodeURIComponent(name)}`),
+  fileUrl: (pid: string, name: string) => `${pidPath(pid)}/files/${encodeURIComponent(name)}`,
+  exportUrl: (pid: string) => `${pidPath(pid)}/export`,
+}
+
+export const PROJECT_FILE_MAX = 10 * 1024 * 1024
+const PROJECT_IMAGE_EXT = ["png", "jpg", "jpeg", "gif", "webp"]
+const PROJECT_TEXT_EXT = [
+  "md", "markdown", "txt", "log", "json", "jsonl", "csv", "tsv", "yaml", "yml", "toml", "xml",
+  "html", "css", "js", "mjs", "ts", "tsx", "jsx", "py", "sh", "lua", "ini", "srt",
+]
+/** `accept` for the project file input */
+export const PROJECT_FILE_ACCEPT = [...PROJECT_IMAGE_EXT, ...PROJECT_TEXT_EXT].map((e) => `.${e}`).join(",")
+
+/** Why a file cannot go into a project, or null when it can. */
+export function projectFileProblem(file: File): string | null {
+  const ext = file.name.includes(".") ? (file.name.split(".").pop() ?? "").toLowerCase() : ""
+  if (!PROJECT_IMAGE_EXT.includes(ext) && !PROJECT_TEXT_EXT.includes(ext))
+    return `${file.name}: only images (png, jpg, gif, webp) and text files can be added`
+  if (file.size > PROJECT_FILE_MAX) return `${file.name}: over the 10 MB limit`
+  return null
 }

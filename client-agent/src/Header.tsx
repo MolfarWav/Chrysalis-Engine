@@ -1,10 +1,10 @@
 import { ModelSelector, type ModelOption } from "@/components/assistant-ui/elements/model-selector.aui"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { SidebarSimple, Star, WifiSlash } from "@phosphor-icons/react"
+import { Folder, SidebarSimple, Star, WifiSlash } from "@phosphor-icons/react"
 import { useMemo, useState, type ReactNode } from "react"
 import { CommandItem } from "@/components/ui/command"
-import { useAgent } from "./store"
+import { currentProjectId, effectiveModel, effectiveReasoning, useAgent } from "./store"
 import { MemoryPanel } from "./MemoryPanel"
 import { cn, shortModelName } from "@/lib/utils"
 
@@ -16,10 +16,8 @@ type PickerOption = ModelOption & { group: string; shown: boolean }
 function ModelPicker(): ReactNode {
   const models = useAgent((s) => s.models)
   const filtered = useAgent((s) => s.modelsFiltered)
-  const model = useAgent((s) => s.model)
-  const reasoning = useAgent((s) => s.reasoning)
+  const model = useAgent(effectiveModel)
   const setModel = useAgent((s) => s.setModel)
-  const setReasoning = useAgent((s) => s.setReasoning)
   const setModelShown = useAgent((s) => s.setModelShown)
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
@@ -35,9 +33,6 @@ function ModelPicker(): ReactNode {
           keywords: [m.provider, m.connectionName ?? "", m.label],
           group: m.connectionName ?? m.provider,
           shown: m.shown,
-          ...(m.reasoning && m.reasoningLevels.length
-            ? { efforts: m.reasoningLevels.map((l) => ({ id: l, name: l[0]?.toUpperCase() + l.slice(1) })) }
-            : {}),
         }))
         .sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name)),
     [models],
@@ -67,8 +62,6 @@ function ModelPicker(): ReactNode {
       // in its own order, so name that one
       value={model ?? firstShown}
       onValueChange={setModel}
-      effort={reasoning || undefined}
-      onEffortChange={(e) => setReasoning(e)}
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
@@ -129,9 +122,43 @@ function ModelPicker(): ReactNode {
             </ModelSelector.Group>
           ) : null}
         </ModelSelector.List>
-        <ModelSelector.Effort />
       </ModelSelector.Content>
     </ModelSelector.Root>
+  )
+}
+
+const capitalize = (l: string): string => (l[0]?.toUpperCase() ?? "") + l.slice(1)
+
+/** Reasoning level of the current chat's model, next to the model picker.
+ *  Hidden while the model has no levels to choose from. */
+function ReasoningSelect(): ReactNode {
+  const models = useAgent((s) => s.models)
+  const model = useAgent(effectiveModel)
+  const reasoning = useAgent(effectiveReasoning)
+  const setReasoning = useAgent((s) => s.setReasoning)
+  // no model picked: the engine runs the first shown one
+  const current = model ? models.find((m) => `${m.provider}/${m.modelId}` === model) : models.find((m) => m.shown)
+  const levels = current?.reasoning ? current.reasoningLevels : []
+  if (!levels.length) return null
+  return (
+    <Select
+      items={levels.map((l) => ({ label: capitalize(l), value: l }))}
+      value={levels.includes(reasoning) ? reasoning : null}
+      onValueChange={(v) => {
+        if (v) setReasoning(v)
+      }}
+    >
+      <SelectTrigger className="h-8 shrink-0 gap-1 rounded-full border-0 bg-transparent px-1.5 text-xs" aria-label="Reasoning">
+        <SelectValue placeholder="Reasoning" />
+      </SelectTrigger>
+      <SelectContent>
+        {levels.map((l) => (
+          <SelectItem key={l} value={l} className="text-xs">
+            {capitalize(l)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -142,6 +169,7 @@ export function ComposerSettings(): ReactNode {
   return (
     <div className="flex min-w-0 items-center gap-1">
       <ModelPicker />
+      <ReasoningSelect />
       <Select
         items={[
           { label: "Full", value: "full" },
@@ -173,10 +201,7 @@ export function ComposerSettings(): ReactNode {
   )
 }
 
-export function Header(): ReactNode {
-  const sessionId = useAgent((s) => s.sessionId)
-  const title = useAgent((s) => s.sessions.find((item) => item.sessionId === sessionId)?.title)
-  const wsDown = useAgent((s) => s.wsDown)
+export function SidebarToggle(): ReactNode {
   const sidebarOpen = useAgent((s) => s.sidebarOpen)
   const sidebarPinned = useAgent((s) => s.sidebarPinned)
   const toggleSidebar = () => {
@@ -185,10 +210,36 @@ export function Header(): ReactNode {
     else state.setSidebar(!sidebarOpen)
   }
   return (
+    <Button id="agent-sidebar-toggle" variant="ghost" size="icon" className="size-9 shrink-0" aria-label="Toggle sidebar" onClick={toggleSidebar}>
+      <SidebarSimple size={18} />
+    </Button>
+  )
+}
+
+export function Header(): ReactNode {
+  const sessionId = useAgent((s) => s.sessionId)
+  const title = useAgent((s) => s.sessions.find((item) => item.sessionId === sessionId)?.title)
+  const project = useAgent((s) => {
+    const id = currentProjectId(s)
+    return id ? (s.projects.find((p) => p.id === id) ?? null) : null
+  })
+  const openProject = useAgent((s) => s.openProject)
+  const wsDown = useAgent((s) => s.wsDown)
+  return (
     <header className="flex h-12 shrink-0 items-center gap-2 px-3 md:px-4">
-      <Button id="agent-sidebar-toggle" variant="ghost" size="icon" className="size-9 shrink-0" aria-label="Toggle sidebar" onClick={toggleSidebar}>
-        <SidebarSimple size={18} />
-      </Button>
+      <SidebarToggle />
+      {project ? (
+        <button
+          type="button"
+          className="text-muted-foreground hover:text-foreground flex min-w-0 max-w-[45%] shrink items-center gap-1.5 truncate text-sm"
+          onClick={() => openProject(project.id)}
+          title={`Open the ${project.title} project`}
+        >
+          {project.icon ? <span aria-hidden>{project.icon}</span> : <Folder size={14} aria-hidden />}
+          <span className="truncate">{project.title}</span>
+          <span aria-hidden>/</span>
+        </button>
+      ) : null}
       <span className="min-w-0 truncate text-sm font-medium">{title?.trim() || "New chat"}</span>
       {wsDown ? <span className="text-destructive ml-auto flex shrink-0 items-center gap-1.5 text-xs" role="status"><WifiSlash size={14} />Reconnecting</span> : null}
       <div className={wsDown ? "shrink-0" : "ml-auto shrink-0"}>

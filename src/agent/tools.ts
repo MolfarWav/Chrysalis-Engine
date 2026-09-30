@@ -11,6 +11,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { UserPaths } from "../paths.js";
 import { agentReadDenied, agentWriteDenied, safeResolve } from "../paths.js";
 import type { SandboxRunner } from "../sandbox/index.js";
+import { guardedGitHttp, readSandboxSettings } from "../sandbox/network.js";
 import { makePathGuard } from "../sandbox/workspace.js";
 import * as git from "../git.js";
 import { GIT_COMMANDS, runGitCli } from "./git-cli.js";
@@ -90,6 +91,9 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
   const askUser: AgentTool = {
     name: "ask_user",
     label: "Ask the user",
+    // a question occupies the single pending-question UI until it is answered:
+    // concurrent calls would overwrite each other's card and hang the batch
+    executionMode: "sequential",
     description:
       "Ask the signed-in user a question and wait for their answer. Use when requirements are ambiguous, a decision is needed, or before anything destructive. options is an optional list of quick-pick choices.",
     parameters: Type.Object({
@@ -302,7 +306,7 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
     name: "git",
     label: "Git",
     description:
-      `Git for the workspace repository, with the command line's own arguments (no leading "git"): ${GIT_COMMANDS}. Examples: "status", "diff HEAD~3 -- apps/roleplay/src", "log --oneline -n 10 -- apps/roleplay", "show abc1234:apps/roleplay/src/App.tsx", "restore --source abc1234 -- apps/roleplay/src/App.tsx", "revert abc1234", "commit -m \"what changed\"". File tools commit on their own; commit after bash changes. There is one line of history (main) and no staging area, branches or remotes. The same git works in the bash shell when you want pipes or redirects.`,
+      `Git for the workspace repository, with the command line's own arguments (no leading "git"): ${GIT_COMMANDS}. Examples: "status", "diff HEAD~3 -- apps/roleplay/src", "log --oneline -n 10 -- apps/roleplay", "show abc1234:apps/roleplay/src/App.tsx", "restore --source abc1234 -- apps/roleplay/src/App.tsx", "revert abc1234", "commit -m \"what changed\"", "clone https://github.com/owner/repo". File tools commit on their own; commit after bash changes. There is one line of history (main) and no staging area, branches or remotes. clone copies another repository's files (no .git) into repos/<name>, which stays out of that history, so you can read, grep or copy from it; it needs the user's internet access on. The same git works in the bash shell when you want pipes or redirects.`,
     parameters: Type.Object({
       args: Type.String({ description: "The git arguments, as typed after `git` on a command line" }),
     }),
@@ -310,7 +314,8 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
       const given = params as { args?: unknown; action?: unknown; message?: unknown; limit?: unknown; path?: unknown; commit?: unknown };
       const args = typeof given.args === "string" ? given.args : legacyGitArgs(given);
       if (!args?.trim()) throw new Error(`git needs arguments. Supported: ${GIT_COMMANDS}.`);
-      const out = await runGitCli({ dir: p.root, username, readOnly: opts.mode === "plan" }, args);
+      const http = readSandboxSettings(p.sandbox).internet ? guardedGitHttp : undefined;
+      const out = await runGitCli({ dir: p.root, username, readOnly: opts.mode === "plan", http }, args);
       return textResult(out || "(no output)", { args });
     },
   };
@@ -572,6 +577,8 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
   const shell = opts.acceptShell && opts.ask
     ? {
         ...bash,
+        // approvals share the ask_user UI, so gate one command at a time
+        executionMode: "sequential" as const,
         async execute(toolCallId: string, params: unknown, ...rest: unknown[]) {
           const command = typeof (params as { command?: unknown })?.command === "string" ? (params as { command: string }).command : "";
           const answer = await opts.ask!({

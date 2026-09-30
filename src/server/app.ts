@@ -23,14 +23,14 @@ import { ENGINE_REPOSITORY, ENGINE_VERSION, resourcesDir } from "../install.js";
 import type { ServerSettings } from "./settings.js";
 import { latestRelease } from "../updates.js";
 import { SELF_UPDATE, startUpdate, updateState } from "../self-update.js";
-import { userPaths, safeResolve, type UserPaths } from "../paths.js";
+import { agentReadDenied, userPaths, safeResolve, type UserPaths } from "../paths.js";
 import * as git from "../git.js";
 import { UserModelService, ModelNotConfiguredError, type ModelPricing } from "../models.js";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import { radiusProvider } from "@earendil-works/pi-ai/providers/radius";
 import type { AuthPrompt, Credential, ProviderAuthInteraction } from "@earendil-works/pi-ai";
 import { curatedProviders, loadCustomProviders, reservedProviderIds } from "../providers/custom.js";
-import { UserAgent, listSessions, renameSession, archiveSession, sessionDir, isReasoningLevel, type ReasoningLevel } from "../agent/agent.js";
+import { UserAgent, instructionDocsStamp, listSessions, renameSession, archiveSession, sessionDir, isReasoningLevel, type ReasoningLevel } from "../agent/agent.js";
 import { summarizeSession } from "../agent/compact.js";
 import * as agentMemory from "../agent/memory.js";
 import { listConnections, createConnection, updateConnection, deleteConnection, validateConnectionInput, validatePromptFormatInput, readConnections, connectionKeyUsable, type ConnectionInfo } from "../connections.js";
@@ -46,7 +46,7 @@ import { sandboxConfigOf } from "../config.js";
 import { BrowserSandbox } from "../sandbox/browser.js";
 import { sandboxAsset, sandboxFrameCsp, sandboxVersion, wasmshAsset } from "../sandbox/assets.js";
 import { workspaceFs, type FsOp as WorkspaceFsOp } from "../sandbox/workspace.js";
-import { decodeGitArgs, initNetTokens, issueNetToken, netTokenUser, proxySandboxRequest, readSandboxEpoch, readSandboxSettings, writeSandboxSettings } from "../sandbox/network.js";
+import { decodeGitArgs, guardedGitHttp, initNetTokens, issueNetToken, netTokenUser, proxySandboxRequest, readSandboxEpoch, readSandboxSettings, writeSandboxSettings } from "../sandbox/network.js";
 import { SANDBOX_GIT_HOST } from "../sandbox/browser/prelude.js";
 import { GitCliError, runGitArgs } from "../agent/git-cli.js";
 import { log } from "../logger.js";
@@ -572,6 +572,15 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
   ): Promise<UserAgent> => {
     const key = sessionId ? `${u.username}:${sessionId}:${model ?? ""}:${reasoning ?? ""}:${mode}` : undefined;
     let a = key ? agentInstances.get(key) : undefined;
+    // The instruction files ride the system prompt, which is snapshotted when
+    // the agent is made. Editing a note or an AGENTS.md mid-conversation and
+    // having it ignored until the next chat is the kind of thing nobody works
+    // out on their own, so a changed file drops the cached agent instead.
+    const docsNow = instructionDocsStamp(userPaths(dataDir, u.username));
+    if (a && a.docsStamp !== docsNow) {
+      if (key) agentInstances.delete(key);
+      a = undefined;
+    }
     if (!a) {
       let resolvedSessionId = sessionId;
       a = await UserAgent.create(u.username, getModels(u), userPaths(dataDir, u.username), users, config, {
@@ -603,6 +612,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
           }),
       });
       resolvedSessionId = a.sessionId;
+      a.docsStamp = docsNow;
       if (key) agentInstances.set(key, a);
     }
     return a;
@@ -786,7 +796,13 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     }
     try {
       const out = await runGitArgs(
-        { dir: userPaths(dataDir, username).root, username, readOnly: false, cwd: norm.slice("/workspace".length).replace(/^\//, "") },
+        {
+          dir: userPaths(dataDir, username).root,
+          username,
+          readOnly: false,
+          cwd: norm.slice("/workspace".length).replace(/^\//, ""),
+          http: readSandboxSettings(userPaths(dataDir, username).sandbox).internet ? guardedGitHttp : undefined,
+        },
         decodeGitArgs(new TextDecoder().decode(capped.bytes)),
       );
       return reply(out && !out.endsWith("\n") ? `${out}\n` : out, "", 0);
@@ -2071,6 +2087,70 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     return c.json({ files: results });
   });
 
+  /** Files a message pointed at with "@path". Workspace-relative only, read
+   *  through the same guard every file tool uses, capped so a message naming
+   *  a huge file does not become the whole context. Anything that is not a
+   *  readable text file in the workspace is left as the plain text it is. */
+  const MENTION_BYTES = 64 * 1024;
+  const readMentionedFiles = (p: UserPaths, message: string): Array<{ path: string; text: string; truncated: boolean }> => {
+    const out: Array<{ path: string; text: string; truncated: boolean }> = [];
+    const seen = new Set<string>();
+    // a path ends at whitespace; trailing sentence punctuation is not part of it
+    for (const m of message.matchAll(/(?:^|\s)@([A-Za-z0-9._][A-Za-z0-9._/\-]{0,255})/g)) {
+      const rel = (m[1] ?? "").replace(/[.,;:!?)\]]+$/, "");
+      if (!rel || seen.has(rel) || out.length >= 10) continue;
+      seen.add(rel);
+      if (agentReadDenied(rel)) continue;
+      let abs: string;
+      try {
+        abs = safeResolve(p.root, rel);
+      } catch {
+        continue;
+      }
+      try {
+        if (!fs.statSync(abs).isFile()) continue;
+        const buf = fs.readFileSync(abs);
+        // a binary file is not context, it is noise
+        if (buf.subarray(0, 4096).includes(0)) continue;
+        const truncated = buf.length > MENTION_BYTES;
+        out.push({ path: rel, text: buf.subarray(0, MENTION_BYTES).toString("utf8"), truncated });
+      } catch { /* unreadable: the model still has the path */ }
+    }
+    return out;
+  };
+
+  // commands/: the user's own reusable prompts, one markdown file each. The
+  // composer lists them as /<filename>; picking one drops its text in the box.
+  // A workflow is mostly the prompts someone types again and again, so this is
+  // the cheapest way to let people bring theirs.
+  app.get("/v1/agent/commands", (c) => {
+    const p = c.get("paths");
+    const dir = path.join(p.root, "commands");
+    const out: { name: string; description: string; body: string }[] = [];
+    let names: string[];
+    try {
+      names = fs.readdirSync(dir).filter((n) => /\.(md|markdown|txt)$/i.test(n)).sort();
+    } catch {
+      return c.json({ commands: [] });
+    }
+    for (const file of names.slice(0, 100)) {
+      const name = file.replace(/\.(md|markdown|txt)$/i, "");
+      // the seeded explainer is not one of the user's commands
+      if (name.toLowerCase() === "readme") continue;
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,48}$/.test(name)) continue;
+      let body: string;
+      try {
+        body = fs.readFileSync(path.join(dir, file), "utf8");
+      } catch {
+        continue;
+      }
+      if (body.length > 32_000) body = body.slice(0, 32_000);
+      const first = body.split("\n").find((l) => l.trim()) ?? "";
+      out.push({ name, description: first.replace(/^#+\s*/, "").trim().slice(0, 120), body: body.trim() });
+    }
+    return c.json({ commands: out });
+  });
+
   app.get("/v1/agent/sessions", (c) => {
     const p = c.get("paths");
     return c.json({ sessions: listSessions(p) });
@@ -2139,6 +2219,9 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
       }
       throw e;
     }
+    // "@path" the composer's file picker put in the message: read them now, so
+    // the model is looking at the file instead of going to fetch it first.
+    const contextFiles = readMentionedFiles(paths, body.message);
     bus.emit(u.username, "agent_session", { sessionId: agent.sessionId });
     const runKey = `${u.username}:${agent.sessionId}`;
     activeRuns.set(runKey, agent);
@@ -2148,6 +2231,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
         onEvent: (ev) => bus.emit(u.username, "agent_event", { sessionId: agent.sessionId, ev }),
         images,
         ...(imageUrls.length ? { imageUrls } : {}),
+        ...(contextFiles.length ? { contextFiles } : {}),
       });
       // auto-compact: when the next call's context is over the limit, fold
       // the session into a summary (marker keeps history for the UI). The

@@ -1,9 +1,13 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { checkProgram, cleanUpAfterUpdate, pickAsset, platformTarget, restoreEngineFiles, restoreProgram, runReplacement, saveEngineFiles, swapProgram } from "../src/self-update.js";
+import http from "node:http";
+import crypto from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { checkProgram, cleanUpAfterUpdate, installUpdate, pickAsset, platformTarget, restoreEngineFiles, restoreProgram, runReplacement, saveEngineFiles, swapProgram } from "../src/self-update.js";
 import { dataFormatProblem, recordDataFormat } from "../src/data-format.js";
+import { forgetRelease, latestRelease } from "../src/updates.js";
 
 const asset = (name: string, url = `https://github.com/o/r/releases/download/v1/${name}`) => ({ name, browser_download_url: url, size: 10 });
 
@@ -201,5 +205,186 @@ describe("data format", () => {
     expect(dataFormatProblem(data, 1)).toMatch(/last used by Chrysalis 2.0.0/);
     expect(dataFormatProblem(data, 2)).toBeNull();
     fs.rmSync(data, { recursive: true, force: true });
+  });
+});
+
+/**
+ * The whole chain against a real HTTP server and a real archive: download,
+ * the size and checksum guards, unpack, the does-it-even-run check, the swap.
+ * Everything but asking GitHub which release is newest.
+ */
+describe("installing a release", () => {
+  let dir: string;
+  let served: string;
+  let server: http.Server;
+  let base: string;
+
+  /** A stand-in for the program: it answers --version like the real one. */
+  const program = (version: string): string => `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${version}"; else echo running; fi\n`;
+
+  const archiveOf = (version: string, name = "Chrysalis-9.9.9-linux-x64.tar.gz"): { name: string; url: string; size: number; sha256: string } => {
+    const staging = fs.mkdtempSync(path.join(os.tmpdir(), "rel-"));
+    const inner = path.join(staging, "Chrysalis-9.9.9-linux-x64");
+    fs.mkdirSync(path.join(inner, "resources"), { recursive: true });
+    fs.writeFileSync(path.join(inner, "chrysalis"), program(version), { mode: 0o755 });
+    fs.writeFileSync(path.join(inner, "resources", "marker.txt"), version);
+    execFileSync("tar", ["-czf", path.join(served, name), "-C", staging, "Chrysalis-9.9.9-linux-x64"]);
+    const body = fs.readFileSync(path.join(served, name));
+    fs.rmSync(staging, { recursive: true, force: true });
+    return { name, url: `${base}/${name}`, size: body.length, sha256: crypto.createHash("sha256").update(body).digest("hex") };
+  };
+
+  beforeEach(async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "installed-"));
+    served = fs.mkdtempSync(path.join(os.tmpdir(), "served-"));
+    // the copy that is already installed, as an update would find it
+    fs.writeFileSync(path.join(dir, "chrysalis"), program("1.0.0"), { mode: 0o755 });
+    fs.mkdirSync(path.join(dir, "resources"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "resources", "marker.txt"), "1.0.0");
+    server = http.createServer((req, res) => {
+      const f = path.join(served, path.basename(req.url ?? ""));
+      if (!fs.existsSync(f)) { res.writeHead(404).end("no"); return; }
+      res.writeHead(200).end(fs.readFileSync(f));
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  });
+  afterEach(async () => {
+    await new Promise<void>((r) => server.close(() => r()));
+    for (const d of [dir, served]) { try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* windows */ } }
+  });
+
+  const run = (asset: ReturnType<typeof archiveOf>, version = "9.9.9") => {
+    let restarted = false;
+    return installUpdate(dir, version, asset, async () => { restarted = true; }, "chrysalis")
+      .then((s) => ({ state: s, restarted: () => restarted }));
+  };
+
+  it("swaps the program and its resources in, then restarts", async () => {
+    const { state, restarted } = await run(archiveOf("9.9.9"));
+    expect(state.phase).toBe("restarting");
+    expect(restarted()).toBe(true);
+    expect(fs.readFileSync(path.join(dir, "chrysalis"), "utf8")).toContain("9.9.9");
+    expect(fs.readFileSync(path.join(dir, "resources", "marker.txt"), "utf8")).toBe("9.9.9");
+    // the old program is kept, so the first run of the new one can be undone
+    expect(fs.readdirSync(dir).some((n) => n.startsWith("chrysalis.old"))).toBe(true);
+    // and nothing is left of the work it did
+    expect(fs.existsSync(path.join(dir, ".update"))).toBe(false);
+  }, 30_000);
+
+  it("refuses a download whose checksum does not match the release", async () => {
+    const asset = archiveOf("9.9.9");
+    const { state, restarted } = await run({ ...asset, sha256: "0".repeat(64) });
+    expect(state.phase).toBe("failed");
+    expect(state.error).toContain("checksum");
+    expect(restarted()).toBe(false);
+    // the installed copy is untouched
+    expect(fs.readFileSync(path.join(dir, "chrysalis"), "utf8")).toContain("1.0.0");
+  }, 30_000);
+
+  it("refuses a download bigger than the release says", async () => {
+    const asset = archiveOf("9.9.9");
+    const { state } = await run({ ...asset, size: 10 });
+    expect(state.phase).toBe("failed");
+    expect(state.error).toContain("larger than the release says");
+    expect(fs.readFileSync(path.join(dir, "chrysalis"), "utf8")).toContain("1.0.0");
+  }, 30_000);
+
+  it("refuses a download that stopped short", async () => {
+    const asset = archiveOf("9.9.9");
+    const { state } = await run({ ...asset, size: asset.size + 1024 });
+    expect(state.phase).toBe("failed");
+    expect(state.error).toContain("incomplete");
+  }, 30_000);
+
+  it("survives a release that is not there", async () => {
+    const asset = archiveOf("9.9.9");
+    const { state } = await run({ ...asset, url: `${base}/gone.tar.gz` });
+    expect(state.phase).toBe("failed");
+    expect(state.error).toContain("HTTP 404");
+    expect(fs.readFileSync(path.join(dir, "chrysalis"), "utf8")).toContain("1.0.0");
+  }, 30_000);
+
+  it("refuses a program that does not say it is the version promised", async () => {
+    // a mislabelled archive: the release claims 9.9.9, the program says otherwise
+    const { state } = await run(archiveOf("3.3.3"));
+    expect(state.phase).toBe("failed");
+    expect(fs.readFileSync(path.join(dir, "chrysalis"), "utf8")).toContain("1.0.0");
+    expect(fs.existsSync(path.join(dir, ".update"))).toBe(false);
+  }, 30_000);
+});
+
+/** The release side of updating: which release GitHub names, whether it is
+ *  newer, and which archive on it belongs to this computer. Driven through
+ *  the fetcher seam, so no request ever leaves the machine. */
+describe("asking GitHub which release is newest", () => {
+  const stable = {
+    tag_name: "v9.9.9",
+    html_url: "https://github.com/ProjectChrysalis/Chrysalis-Engine/releases/tag/v9.9.9",
+    name: "Chrysalis 9.9.9",
+    assets: [
+      { name: `Chrysalis-9.9.9-${platformTarget()}.tar.gz`, browser_download_url: `https://github.com/o/r/releases/download/v9.9.9/Chrysalis-9.9.9-${platformTarget()}.tar.gz`, size: 42, state: "uploaded", digest: `sha256:${"ab".repeat(32)}` },
+    ],
+  };
+  const fetcher = (body: unknown, status = 200) => {
+    const calls: string[] = [];
+    const f = (async (url: string) => {
+      calls.push(String(url));
+      return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    }) as unknown as typeof fetch;
+    return { f, calls };
+  };
+
+  beforeEach(() => forgetRelease());
+  afterEach(() => forgetRelease());
+
+  it("reads the newest stable release and names its page", async () => {
+    const { f, calls } = fetcher(stable);
+    const release = await latestRelease(f, "1.0.0");
+    expect(calls[0]).toContain("/releases/latest");
+    expect(release?.version).toBe("9.9.9");
+    expect(release?.newer).toBe(true);
+    expect(release?.url).toBe(stable.html_url);
+    // the archive to download is pickAsset's job, tested on its own: a source
+    // or container copy runs without SELF_UPDATE and never offers one
+  });
+
+  it("keeps the release, but not newer, when it is this version", async () => {
+    const { f } = fetcher(stable);
+    const release = await latestRelease(f, "9.9.9");
+    expect(release?.newer).toBe(false);
+  });
+
+  it("follows the staging pre-release when this build is staging", async () => {
+    const { f, calls } = fetcher({ ...stable, tag_name: undefined, name: "Staging 9.9.9-staging.4" });
+    const release = await latestRelease(f, "9.9.9-staging.3");
+    expect(calls[0]).toContain("/releases/tags/staging-latest");
+    expect(release?.version).toBe("9.9.9-staging.4");
+    expect(release?.newer).toBe(true);
+    // any other staging build is newer, so the same one is the only "no"
+    forgetRelease();
+    const same = await latestRelease(fetcher({ ...stable, tag_name: undefined, name: "Staging 9.9.9-staging.4" }).f, "9.9.9-staging.4");
+    expect(same?.newer).toBe(false);
+  });
+
+  it("remembers the answer, so reopening Settings does not ask again", async () => {
+    const { f, calls } = fetcher(stable);
+    await latestRelease(f, "1.0.0");
+    await latestRelease(f, "1.0.0");
+    expect(calls.length).toBe(1);
+    forgetRelease();
+    await latestRelease(f, "1.0.0");
+    expect(calls.length).toBe(2);
+  });
+
+  it("says nothing when the release cannot be read", async () => {
+    const down = (async () => {
+      throw new Error("offline");
+    }) as unknown as typeof fetch;
+    expect(await latestRelease(down, "1.0.0")).toBeNull();
+    forgetRelease();
+    expect(await latestRelease(fetcher({}, 500).f, "1.0.0")).toBeNull();
+    forgetRelease();
+    expect(await latestRelease(fetcher({ tag_name: "v9.9.9" }, 200).f, "1.0.0")).toBeNull();
   });
 });

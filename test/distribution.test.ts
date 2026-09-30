@@ -495,3 +495,73 @@ describe("engine identity", () => {
     expect(v.engine!.version).not.toBe("");
   });
 });
+
+describe("the command line an outside agent uses", () => {
+  const src = fs.readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+
+  it("offers workspace, api and install-cli, and --help names them", () => {
+    const help = /const HELP = `([\s\S]*?)`;/.exec(src)?.[1] ?? "";
+    expect(help).not.toBe("");
+    for (const verb of ["workspace", "api", "install-cli", "uninstall-cli"]) {
+      expect(src, `no "${verb}" case`).toContain(`case "${verb}":`);
+      expect(help, `"${verb}" is not in --help`).toContain(verb);
+    }
+  });
+
+  it("never puts a PATH through setx, which truncates it", () => {
+    // the comment explaining why may name it; a call would quote it
+    expect(src).not.toContain('"setx"');
+    expect(src).not.toContain("'setx'");
+  });
+
+  it("says how to run itself per install, not just 'chrysalis'", () => {
+    // a downloaded build is not on PATH: the examples have to be pasteable
+    expect(src).toContain('if (INSTALL_KIND === "npm") return "chrysalis"');
+    expect(src).toContain("process.execPath");
+  });
+});
+
+describe("chrysalis makes itself a command", () => {
+  const src = fs.readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+
+  it("links on first start, so nobody has to find install-cli", () => {
+    expect(src).toContain(".cli-linked");
+    expect(src).toContain("await linkCli(dataDir)");
+  });
+
+  it("writes the marker BEFORE trying, so uninstall-cli stays undone", () => {
+    const block = src.slice(src.indexOf("const cliMarker"), src.indexOf("const cliMarker") + 700);
+    expect(block.indexOf("writeFileSync(cliMarker")).toBeLessThan(block.indexOf("await linkCli"));
+  });
+
+  it("never lets the convenience take the engine down with it", () => {
+    const block = src.slice(src.indexOf("const cliMarker"), src.indexOf("const cliMarker") + 700);
+    expect(block).toContain("catch");
+    expect(block).toContain("log.warn");
+  });
+
+  it("only ever finds, and so only ever removes, a link pointing at us", () => {
+    const block = src.slice(src.indexOf("function existingCliLink"), src.indexOf("function existingCliLink") + 800);
+    expect(block).toContain("readlinkSync");
+    expect(block).toContain("process.execPath");
+    // and uninstall acts on exactly what that found
+    const unlink = src.slice(src.indexOf("async function unlinkCli"), src.indexOf("async function unlinkCli") + 400);
+    expect(unlink).toContain("existingCliLink(dataDir)");
+  });
+
+  it("puts the link where the shell will actually look", () => {
+    // ~/.local/bin is not on the default macOS PATH; a link nobody searches
+    // for is the same as no link at all
+    expect(src).toContain("function cliCandidates");
+    expect(src).toContain("/usr/local/bin");
+    expect(src).toContain("onPath(d) && writableDir(d)");
+  });
+
+  it("does not bother inside a container", () => {
+    expect(src).toContain('INSTALL_KIND === "binary" && !IN_CONTAINER');
+  });
+
+  it("refuses a body its shell already mangled, instead of sending it", () => {
+    expect(src).toContain("not valid JSON after your shell finished with it");
+  });
+});

@@ -16,7 +16,8 @@ import { EventBus } from "../src/server/ws.js";
 import { SessionService } from "../src/sessions.js";
 import { UserService } from "../src/users.js";
 import { defaultInstanceConfig } from "../src/config.js";
-import { userPaths } from "../src/paths.js";
+import { bootstrapUserDir, ensureWorkspaceAgentsMd, userPaths } from "../src/paths.js";
+import { instructionDocsStamp } from "../src/agent/agent.js";
 import { invalidatePluginCache } from "../src/plugins/runtime.js";
 import { installNotesApp } from "./fixtures/notes-app.js";
 
@@ -217,4 +218,120 @@ describe("admin password resets", () => {
     });
     expect(disable.status).toBe(200);
   }, 30_000);
+});
+describe("workspace instruction files", () => {
+  it("seeds AGENTS.md with a digest marker and notes/ with a README", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chry-docs-"));
+    try {
+      bootstrapUserDir(dir, "ada");
+      const root = path.join(dir, "users", "ada");
+      const agents = fs.readFileSync(path.join(root, "AGENTS.md"), "utf8");
+      expect(agents).toMatch(/^<!-- chrysalis-workspace-agents: \d+ sha256:[0-9a-f]{16} -->\n/);
+      expect(fs.readFileSync(path.join(root, "notes", "README.md"), "utf8")).toContain("# Notes");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("never overwrites an AGENTS.md someone edited", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chry-docs-"));
+    try {
+      bootstrapUserDir(dir, "ada");
+      const am = path.join(dir, "users", "ada", "AGENTS.md");
+      const seeded = fs.readFileSync(am, "utf8");
+      // an edit that keeps the marker line — the obvious thing to do with a
+      // file full of instructions, and what used to be silently reverted
+      const edited = seeded.replace(/\n## Layout\n/, "\n## House rules\nAlways ask before deleting a chat.\n\n## Layout\n");
+      expect(edited).not.toBe(seeded);
+      fs.writeFileSync(am, edited, "utf8");
+      // pretend a later engine ships a newer template
+      const older = edited.replace(/chrysalis-workspace-agents: \d+/, "chrysalis-workspace-agents: 1");
+      fs.writeFileSync(am, older, "utf8");
+      expect(ensureWorkspaceAgentsMd(dir, "ada")).toBe(false);
+      expect(fs.readFileSync(am, "utf8")).toContain("Always ask before deleting a chat.");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does refresh an untouched copy when the template moves on", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chry-docs-"));
+    try {
+      bootstrapUserDir(dir, "ada");
+      const am = path.join(dir, "users", "ada", "AGENTS.md");
+      // same body, older version: an engine-written copy from a past release
+      const body = fs.readFileSync(am, "utf8").replace(/^<!--[^\n]*-->\n/, "");
+      fs.writeFileSync(am, `<!-- chrysalis-workspace-agents: 1 -->\n${body}`, "utf8");
+      expect(ensureWorkspaceAgentsMd(dir, "ada")).toBe(true);
+      expect(fs.readFileSync(am, "utf8")).toMatch(/sha256:[0-9a-f]{16}/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("the fingerprint moves when a note is written", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chry-docs-"));
+    try {
+      const p = bootstrapUserDir(dir, "ada");
+      const before = instructionDocsStamp(p);
+      fs.writeFileSync(path.join(dir, "users", "ada", "notes", "plan.md"), "# Plan\nRework memory.\n", "utf8");
+      expect(instructionDocsStamp(p)).not.toBe(before);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("what a coding agent of your own can reach", () => {
+  it("lists the user's commands/ prompts, skipping the seeded README", async () => {
+    const t = await createUser("cmd-user");
+    const p = userPaths(dataDir, "cmd-user");
+    fs.writeFileSync(path.join(p.root, "commands", "review.md"), "# Review the diff\n\nSay what would break.\n", "utf8");
+    fs.writeFileSync(path.join(p.root, "commands", "not a command.md"), "ignored\n", "utf8");
+    const res = await app.request("/v1/agent/commands", { headers: userH(t) });
+    expect(res.status).toBe(200);
+    const { commands } = (await res.json()) as { commands: { name: string; description: string; body: string }[] };
+    expect(commands.map((c) => c.name)).toEqual(["review"]);
+    expect(commands[0]!.description).toBe("Review the diff");
+    expect(commands[0]!.body).toContain("Say what would break.");
+  });
+
+  it("searches workspace files for the composer's @ picker", async () => {
+    const t = await createUser("at-user");
+    const p = userPaths(dataDir, "at-user");
+    fs.writeFileSync(path.join(p.root, "notes", "memory-rework.md"), "# Rework memory\n", "utf8");
+    const res = await app.request("/v1/agent/files?q=memory-rework", { headers: userH(t) });
+    const { files } = (await res.json()) as { files: string[] };
+    expect(files).toContain("notes/memory-rework.md");
+  });
+
+  it("keeps one user's commands and files out of another's", async () => {
+    const ta = await createUser("alice");
+    const tb = await createUser("bob");
+    fs.writeFileSync(path.join(userPaths(dataDir, "alice").root, "commands", "secret.md"), "# Alice only\n", "utf8");
+    const mine = (await (await app.request("/v1/agent/commands", { headers: userH(ta) })).json()) as { commands: { name: string }[] };
+    const theirs = (await (await app.request("/v1/agent/commands", { headers: userH(tb) })).json()) as { commands: { name: string }[] };
+    expect(mine.commands.map((c) => c.name)).toContain("secret");
+    expect(theirs.commands.map((c) => c.name)).not.toContain("secret");
+  });
+
+  it("a session minted by another process on this machine is accepted", async () => {
+    // this is what `chrysalis api` does: it can read the data folder, so it
+    // writes itself a session rather than needing a token it cannot recover
+    const t = await createUser("cli-user");
+    expect((await app.request("/v1/apps", { headers: userH(t) })).status).toBe(200);
+    const outside = new SessionService(dataDir);
+    const token = outside.create("cli-user");
+    const res = await app.request("/v1/apps", { headers: { cookie: `chrysalis_session=${token}` } });
+    expect(res.status).toBe(200);
+    // and a write, which is where a stale in-memory session list used to bite
+    const put = await app.request("/v1/settings/persona", {
+      method: "PUT",
+      headers: { cookie: `chrysalis_session=${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ persona: "Prefer small diffs." }),
+    });
+    expect(put.status).toBe(200);
+    outside.destroy(token);
+    expect((await app.request("/v1/apps", { headers: { cookie: `chrysalis_session=${token}` } })).status).toBe(401);
+  });
 });

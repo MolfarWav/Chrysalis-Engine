@@ -10,11 +10,14 @@ rem git may replace this very file mid-run; cmd reads a batch file as it goes,
 rem so run from a copy in %TEMP% and let the original change freely
 if not "%~1"=="--from-copy" (
   copy /y "%~f0" "%TEMP%\start-chrysalis.bat" >nul
-  "%TEMP%\start-chrysalis.bat" --from-copy %*
+  "%TEMP%\start-chrysalis.bat" --from-copy "%~dp0.." %*
 )
+rem the repository is the folder above .fork\; a copy of this file kept
+rem elsewhere falls back to Chrysalis-Engine in the user's home folder
+set "ROOT=%~f2"
+if not exist "%ROOT%\package.json" set "ROOT=%USERPROFILE%\Chrysalis-Engine"
 shift
-
-set "ROOT=C:\Users\sulaz\Chrysalis-Engine"
+shift
 title Chrysalis
 cd /d "%ROOT%" || (echo Folder not found: %ROOT% & pause & exit /b 1)
 

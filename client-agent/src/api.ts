@@ -214,7 +214,7 @@ export interface AgentSkill {
 
 export interface AgentMemory {
   global: { file: string; text: string }
-  apps: Array<{ id: string; file: string; text: string }>
+  apps: Array<{ id: string; scope?: string; file: string; text: string }>
   skills: AgentSkill[]
 }
 

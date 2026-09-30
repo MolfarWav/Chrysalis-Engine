@@ -30,7 +30,8 @@ import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import { radiusProvider } from "@earendil-works/pi-ai/providers/radius";
 import type { AuthPrompt, Credential, ProviderAuthInteraction } from "@earendil-works/pi-ai";
 import { curatedProviders, loadCustomProviders, reservedProviderIds } from "../providers/custom.js";
-import { UserAgent, instructionDocsStamp, listSessions, renameSession, archiveSession, sessionDir, isReasoningLevel, type ReasoningLevel } from "../agent/agent.js";
+import { UserAgent, instructionDocsStamp, listSessions, renameSession, archiveSession, sessionDir, sessionProject, isReasoningLevel, type ReasoningLevel } from "../agent/agent.js";
+import * as projects from "../agent/projects.js";
 import { summarizeSession } from "../agent/compact.js";
 import * as agentMemory from "../agent/memory.js";
 import { listConnections, createConnection, updateConnection, deleteConnection, validateConnectionInput, validatePromptFormatInput, readConnections, connectionKeyUsable, type ConnectionInfo } from "../connections.js";
@@ -569,6 +570,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     model?: string,
     reasoning?: ReasoningLevel,
     mode: "normal" | "accept" | "plan" = "normal",
+    project?: string,
   ): Promise<UserAgent> => {
     const key = sessionId ? `${u.username}:${sessionId}:${model ?? ""}:${reasoning ?? ""}:${mode}` : undefined;
     let a = key ? agentInstances.get(key) : undefined;
@@ -576,7 +578,10 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     // the agent is made. Editing a note or an AGENTS.md mid-conversation and
     // having it ignored until the next chat is the kind of thing nobody works
     // out on their own, so a changed file drops the cached agent instead.
-    const docsNow = instructionDocsStamp(userPaths(dataDir, u.username));
+    // A project chat's project (instructions, memory, file list) counts too.
+    const up = userPaths(dataDir, u.username);
+    const inProject = (sessionId ? sessionProject(up, sessionId) : null) ?? project;
+    const docsNow = instructionDocsStamp(up) + (inProject ? `#${projects.projectStamp(up.root, inProject)}` : "");
     if (a && a.docsStamp !== docsNow) {
       if (key) agentInstances.delete(key);
       a = undefined;
@@ -593,6 +598,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
         ...(model ? { model } : {}),
         ...(reasoning ? { reasoning } : {}),
         ...(mode !== "normal" ? { mode } : {}),
+        ...(project ? { project } : {}),
         ask: (q) =>
           new Promise<string>((resolve) => {
             const id = nodeCrypto.randomUUID();
@@ -2211,6 +2217,8 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
       reasoning?: string;
       mode?: string;
       images?: Array<{ data: string; mimeType: string }>;
+      /** Project for a new session ("app:<id>" / "project:<name>"). */
+      project?: string;
     }>().catch(() => null));
     // null/array/scalar bodies AND non-string message values are 400s, not 500s
     if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.message !== "string" || !body.message.trim()) {
@@ -2218,6 +2226,14 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     }
     if (body.sessionId !== undefined && !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(body.sessionId)) {
       return c.json({ error: "invalid sessionId (allowed: letters, digits, - _; max 64)" }, 400);
+    }
+    if (body.project !== undefined) {
+      try {
+        if (typeof body.project !== "string") throw new Error("project must be a project id");
+        projects.projectLayout(c.get("paths").root, body.project);
+      } catch (e) {
+        return c.json({ error: (e as Error).message }, 400);
+      }
     }
     const images = (body.images ?? [])
       .filter((img) => img && typeof img.data === "string" && /^image\/(png|jpeg|gif|webp)$/.test(img.mimeType))
@@ -2242,6 +2258,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
         typeof body.model === "string" ? body.model.slice(0, 200) : undefined,
         isReasoningLevel(body.reasoning) ? body.reasoning : undefined,
         body.mode === "plan" ? "plan" : body.mode === "accept" ? "accept" : "normal",
+        body.project,
       );
     } catch (e) {
       if (/no models configured/i.test((e as Error).message)) {
@@ -2579,6 +2596,145 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
       return c.json({ ok: true });
     } catch (e) {
       return memoryError(c, e);
+    }
+  });
+
+  // ---------- projects (the agent page) ----------
+  // Shell-only: none of these is on the app bridge's allowlist, so an app
+  // frame can neither read a project's files nor plant one.
+  const projectError = (c: Context, e: unknown) =>
+    e instanceof projects.ProjectError ? c.json({ error: e.message }, e.status) : c.json({ error: (e as Error).message }, 500);
+  const projectOf = (c: Context<AppEnv>): projects.ProjectLayout => projects.projectLayout(c.get("paths").root, c.req.param("pid") ?? "");
+
+  app.get("/v1/projects", (c) => c.json({ projects: projects.listProjects(c.get("paths").root) }));
+
+  app.post("/v1/projects", async (c) => {
+    const u = c.get("user");
+    const p = c.get("paths");
+    const body = await c.req.json<{ title?: unknown; name?: unknown; icon?: unknown; tag?: unknown }>().catch(() => ({}) as Record<string, unknown>);
+    try {
+      const l = projects.createProject(p.root, {
+        title: typeof body.title === "string" ? body.title : "",
+        ...(typeof body.name === "string" && body.name ? { name: body.name } : {}),
+        ...(typeof body.icon === "string" && body.icon ? { icon: body.icon } : {}),
+        ...(typeof body.tag === "string" && body.tag ? { tag: body.tag } : {}),
+      });
+      await git.commitAll(p.root, u.username, `project: create ${l.name}`).catch(() => undefined);
+      return c.json({ ok: true, id: l.id });
+    } catch (e) {
+      return projectError(c, e);
+    }
+  });
+
+  // a free project's zip back in (raw zip body); ?name= renames it
+  app.post("/v1/projects/import", async (c) => {
+    const u = c.get("user");
+    const p = c.get("paths");
+    const name = c.req.query("name") || undefined;
+    try {
+      const l = projects.importProject(p.root, new Uint8Array(await c.req.arrayBuffer()), name);
+      await git.commitAll(p.root, u.username, `project: import ${l.name}`).catch(() => undefined);
+      return c.json({ ok: true, id: l.id });
+    } catch (e) {
+      return projectError(c, e);
+    }
+  });
+
+  app.get("/v1/projects/:pid", (c) => {
+    try {
+      return c.json(projects.readProject(c.get("paths").root, projectOf(c)));
+    } catch (e) {
+      return projectError(c, e);
+    }
+  });
+
+  app.put("/v1/projects/:pid", async (c) => {
+    const u = c.get("user");
+    const p = c.get("paths");
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "a JSON object is required" }, 400);
+    try {
+      const l = projectOf(c);
+      projects.writeProject(p.root, l, body);
+      await git.commitAll(p.root, u.username, `project: update ${l.id}`).catch(() => undefined);
+      return c.json(projects.readProject(p.root, l));
+    } catch (e) {
+      return projectError(c, e);
+    }
+  });
+
+  app.delete("/v1/projects/:pid", async (c) => {
+    const u = c.get("user");
+    const p = c.get("paths");
+    try {
+      const l = projectOf(c);
+      projects.deleteProject(p.root, l);
+      await git.commitAll(p.root, u.username, `project: delete ${l.name}`).catch(() => undefined);
+      evictAgents(u.username);
+      return c.json({ ok: true });
+    } catch (e) {
+      return projectError(c, e);
+    }
+  });
+
+  app.get("/v1/projects/:pid/export", async (c) => {
+    try {
+      const l = projectOf(c);
+      const zip = await projects.exportProject(c.get("paths").root, l);
+      c.header("content-type", "application/zip");
+      c.header("content-disposition", `attachment; filename="${l.name}-project-${new Date().toISOString().slice(0, 10)}.zip"`);
+      c.header("x-content-type-options", "nosniff");
+      return c.body(new Uint8Array(zip));
+    } catch (e) {
+      if (e instanceof BackupError) return c.json({ error: e.message }, e.status);
+      return projectError(c, e);
+    }
+  });
+
+  app.get("/v1/projects/:pid/files", (c) => {
+    try {
+      const l = projectOf(c);
+      return c.json({ files: projects.listFiles(c.get("paths").root, l), dir: l.files });
+    } catch (e) {
+      return projectError(c, e);
+    }
+  });
+
+  // the raw file: thumbnails on the project page, one-click attach
+  app.get("/v1/projects/:pid/files/:name", (c) => {
+    try {
+      const abs = projects.filePath(c.get("paths").root, projectOf(c), c.req.param("name"));
+      const st = fs.lstatSync(abs, { throwIfNoEntry: false });
+      if (!st?.isFile()) return c.json({ error: "no such file" }, 404);
+      const file = projects.listFiles(c.get("paths").root, projectOf(c)).find((f) => f.name === c.req.param("name"));
+      c.header("content-type", file?.type === "image" ? file.mime : "text/plain; charset=utf-8");
+      c.header("x-content-type-options", "nosniff");
+      c.header("content-security-policy", "default-src 'none'; sandbox");
+      c.header("cache-control", "no-cache");
+      return c.body(new Uint8Array(fs.readFileSync(abs)));
+    } catch (e) {
+      return projectError(c, e);
+    }
+  });
+
+  app.put("/v1/projects/:pid/files/:name", async (c) => {
+    if (Number(c.req.header("content-length") ?? "0") > projects.PROJECT_FILE_MAX) return c.json({ error: "a project file can be at most 10 MB" }, 413);
+    try {
+      const l = projectOf(c);
+      const f = projects.putFile(c.get("paths").root, l, c.req.param("name"), new Uint8Array(await c.req.arrayBuffer()));
+      // no commit: uploads never enter git (the backup keeps them)
+      return c.json({ ok: true, file: f });
+    } catch (e) {
+      return projectError(c, e);
+    }
+  });
+
+  app.delete("/v1/projects/:pid/files/:name", (c) => {
+    try {
+      projects.deleteFile(c.get("paths").root, projectOf(c), c.req.param("name"));
+      return c.json({ ok: true });
+    } catch (e) {
+      return projectError(c, e);
     }
   });
 

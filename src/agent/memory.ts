@@ -7,6 +7,8 @@
  *                                     export zip, so it moves between machines)
  *   skills/<name>/SKILL.md            reusable procedures, for everything
  *   apps/<id>/.skills/<name>/SKILL.md procedures for one app (also exported)
+ *   projects/<name>/.memory/MEMORY.md and projects/<name>/.skills/: the same
+ *                                     for a free project (see projects.ts)
  *
  * The agent never writes these files itself (paths.ts denies them to every
  * file tool and the sandbox). It proposes; the user confirms each entry in an
@@ -27,6 +29,8 @@ export const GLOBAL_MEMORY = "memory/MEMORY.md";
 export const GLOBAL_SKILLS = "skills";
 export const appMemoryPath = (id: string): string => `apps/${id}/.memory/MEMORY.md`;
 export const appSkillsDir = (id: string): string => `apps/${id}/.skills`;
+export const projectMemoryPath = (name: string): string => `projects/${name}/.memory/MEMORY.md`;
+export const projectSkillsDir = (name: string): string => `projects/${name}/.skills`;
 
 /** Memory shown in the system prompt / attached for a project, in chars. */
 const MEMORY_CHARS = 6000;
@@ -34,24 +38,36 @@ const ENTRY_MAX = 500;
 const SKILL_NAME = /^[a-z0-9][a-z0-9-]{0,47}$/;
 const SKILL_BODY_MAX = 20_000;
 const APP_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+/** A free project's folder name under projects/. */
+export const PROJECT_NAME = /^[a-z0-9][a-z0-9-]{0,47}$/;
 
 export interface MemoryScope {
   /** Workspace-relative memory file. */
   file: string;
   /** How the scope is named to the user and the model. */
   label: string;
+  /** Where this scope's skills live. */
+  skillsDir: string;
   appId?: string;
+  /** A free project (projects/<name>/). */
+  projectName?: string;
 }
 
-/** "global" or "app:<id>" (an installed app) → where that memory lives. */
+/** "global", "app:<id>" (an installed app) or "project:<name>" (a free
+ *  project) → where that memory and those skills live. */
 export function resolveScope(root: string, scope: string | undefined): MemoryScope {
   const s = (scope ?? "global").trim();
-  if (s === "global" || s === "") return { file: GLOBAL_MEMORY, label: "global memory" };
+  if (s === "global" || s === "") return { file: GLOBAL_MEMORY, label: "global memory", skillsDir: GLOBAL_SKILLS };
+  const name = /^project:(.+)$/.exec(s)?.[1];
+  if (name !== undefined) {
+    if (!PROJECT_NAME.test(name) || !fs.existsSync(path.join(root, "projects", name))) throw new Error(`no project "${name}"`);
+    return { file: projectMemoryPath(name), label: `project memory of ${name}`, skillsDir: projectSkillsDir(name), projectName: name };
+  }
   const m = /^app:(.+)$/.exec(s);
-  if (!m || !APP_ID.test(m[1]!)) throw new Error(`scope must be "global" or "app:<app-id>", got "${s}"`);
+  if (!m || !APP_ID.test(m[1]!)) throw new Error(`scope must be "global", "app:<app-id>" or "project:<name>", got "${s}"`);
   const id = m[1]!;
   if (!fs.existsSync(path.join(root, "apps", id, "manifest.json"))) throw new Error(`no installed app "${id}"`);
-  return { file: appMemoryPath(id), label: `project memory of ${id}`, appId: id };
+  return { file: appMemoryPath(id), label: `project memory of ${id}`, skillsDir: appSkillsDir(id), appId: id };
 }
 
 function readText(root: string, rel: string): string {
@@ -89,7 +105,8 @@ export function appendEntry(root: string, scope: MemoryScope, text: string, repl
   if (!entry) throw new Error("the entry is empty");
   const abs = path.join(root, scope.file);
   let body = readText(root, scope.file);
-  if (!body) body = scope.appId ? `# Project memory: ${scope.appId}\n\n` : "# Memory\n\n";
+  const owner = scope.appId ?? scope.projectName;
+  if (!body) body = owner ? `# Project memory: ${owner}\n\n` : "# Memory\n\n";
   let replaced: string | undefined;
   if (replaces && replaces.trim()) {
     const needle = replaces.trim().toLowerCase();
@@ -113,7 +130,7 @@ export function appendEntry(root: string, scope: MemoryScope, text: string, repl
 export interface SkillInfo {
   name: string;
   description: string;
-  /** "global" or "app:<id>" */
+  /** "global", "app:<id>" or "project:<name>" */
   scope: string;
   /** Workspace-relative SKILL.md path. */
   file: string;
@@ -147,19 +164,30 @@ function skillsIn(root: string, dirRel: string, scope: string): SkillInfo[] {
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Every valid skill: the global ones, then each app's. */
-export function listSkills(root: string, appId?: string): SkillInfo[] {
-  if (appId) return skillsIn(root, appSkillsDir(appId), `app:${appId}`);
-  const out = skillsIn(root, GLOBAL_SKILLS, "global");
-  let apps: fs.Dirent[] = [];
+function subdirs(root: string, rel: string): string[] {
   try {
-    apps = fs.readdirSync(path.join(root, "apps"), { withFileTypes: true });
+    return fs
+      .readdirSync(path.join(root, rel), { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+      .map((e) => e.name)
+      .sort();
   } catch {
-    /* no apps yet */
+    return [];
   }
-  for (const a of apps) {
-    if (a.isDirectory() && !a.name.startsWith(".")) out.push(...skillsIn(root, appSkillsDir(a.name), `app:${a.name}`));
+}
+
+/** Every valid skill: the global ones, then each app's, then each free
+ *  project's. With a scope ("app:<id>" or "project:<name>"), that one's only. */
+export function listSkills(root: string, only?: string): SkillInfo[] {
+  if (only) {
+    const name = /^project:(.+)$/.exec(only)?.[1];
+    if (name !== undefined) return PROJECT_NAME.test(name) ? skillsIn(root, projectSkillsDir(name), only) : [];
+    const id = only.replace(/^app:/, "");
+    return skillsIn(root, appSkillsDir(id), `app:${id}`);
   }
+  const out = skillsIn(root, GLOBAL_SKILLS, "global");
+  for (const a of subdirs(root, "apps")) out.push(...skillsIn(root, appSkillsDir(a), `app:${a}`));
+  for (const n of subdirs(root, "projects")) if (PROJECT_NAME.test(n)) out.push(...skillsIn(root, projectSkillsDir(n), `project:${n}`));
   return out;
 }
 
@@ -183,11 +211,11 @@ ${memory ? clipMemory(memory) : "(nothing yet)"}
 ${skills.length ? skills.map(skillLine).join("\n") : "(none yet)"}
 
 ## Rules
-- A project's memory (${appMemoryPath("<id>")}) and its skills are shown to you automatically the first time you touch that app in a session.
-- To remember something durable — a user preference, a decision, where a project stands, a gotcha that cost real time — call memory_propose with scope "global" or "app:<id>". Never say something is saved until the tool says so. Do not propose trivia, one-off details, or secrets (keys, passwords, tokens).
+- A project's memory (${appMemoryPath("<id>")}) and its skills are shown to you automatically the first time you touch that app in a session. A chat opened inside a project has that project's section below instead.
+- To remember something durable — a user preference, a decision, where a project stands, a gotcha that cost real time — call memory_propose with scope "global", "app:<id>" or "project:<name>". Never say something is saved until the tool says so. Do not propose trivia, one-off details, or secrets (keys, passwords, tokens).
 - After substantial work, at a natural stopping point, propose what is worth keeping — once, not after every message. When an entry is outdated, pass replaces with a phrase from the old entry.
 - Before a task a skill covers, call skill_load and follow it. When you worked out a procedure worth repeating, offer it with skill_propose.
-- memory/, skills/, apps/*/.memory/ and apps/*/.skills/ cannot be written by file tools or the shell: use the tools.`;
+- memory/, skills/, apps/*/.memory/, apps/*/.skills/ and the same folders under projects/ cannot be written by file tools or the shell: use the tools.`;
 }
 
 const APP_IN_ARGS = /(?:^|[\s"'`=(/])apps\/([A-Za-z0-9][A-Za-z0-9_-]{0,63})(?=[/\s"'`)]|$)/;
@@ -228,9 +256,9 @@ export function buildMemoryTools(username: string, p: UserPaths, opts: Pick<Agen
     name: "memory_propose",
     label: "Propose a memory entry",
     description:
-      'Propose one entry for long-term memory. The user sees it and confirms, edits or skips it; it is saved only if they agree. scope: "global" (about the user and everything) or "app:<app-id>" (one project). One self-contained sentence, specific (names, paths, dates). replaces: a phrase from an existing entry this one supersedes.',
+      'Propose one entry for long-term memory. The user sees it and confirms, edits or skips it; it is saved only if they agree. scope: "global" (about the user and everything), "app:<app-id>" (one app project) or "project:<name>" (one free project). One self-contained sentence, specific (names, paths, dates). replaces: a phrase from an existing entry this one supersedes.',
     parameters: Type.Object({
-      scope: Type.String({ description: '"global" or "app:<app-id>"' }),
+      scope: Type.String({ description: '"global", "app:<app-id>" or "project:<name>"' }),
       entry: Type.String({ description: "The entry: one self-contained sentence" }),
       replaces: Type.Optional(Type.String({ description: "A phrase identifying an existing entry to replace" })),
     }),
@@ -263,7 +291,7 @@ export function buildMemoryTools(username: string, p: UserPaths, opts: Pick<Agen
     description: "Load a skill's full instructions by name (from the skills list in your instructions, or an app's skills). Follow them for the task at hand.",
     parameters: Type.Object({
       name: Type.String(),
-      scope: Type.Optional(Type.String({ description: '"global" or "app:<app-id>"; omit to search all' })),
+      scope: Type.Optional(Type.String({ description: '"global", "app:<app-id>" or "project:<name>"; omit to search all' })),
     }),
     async execute(_id, params) {
       const { name, scope } = params as { name: string; scope?: string };
@@ -278,12 +306,12 @@ export function buildMemoryTools(username: string, p: UserPaths, opts: Pick<Agen
     name: "skill_propose",
     label: "Propose a skill",
     description:
-      'Propose a new skill, or a new version of an existing one (same name and scope). The user reviews it and saves or skips it. name: lowercase-with-dashes. description: one line saying WHEN to use it (this is what you will see in the skills list). body: markdown instructions — steps, file paths, gotchas, a checklist to verify. scope: "global" or "app:<app-id>".',
+      'Propose a new skill, or a new version of an existing one (same name and scope). The user reviews it and saves or skips it. name: lowercase-with-dashes. description: one line saying WHEN to use it (this is what you will see in the skills list). body: markdown instructions — steps, file paths, gotchas, a checklist to verify. scope: "global", "app:<app-id>" or "project:<name>".',
     parameters: Type.Object({
       name: Type.String(),
       description: Type.String(),
       body: Type.String(),
-      scope: Type.Optional(Type.String({ description: '"global" (default) or "app:<app-id>"' })),
+      scope: Type.Optional(Type.String({ description: '"global" (default), "app:<app-id>" or "project:<name>"' })),
     }),
     async execute(_id, params) {
       const { name, description, body, scope: rawScope } = params as { name: string; description: string; body: string; scope?: string };
@@ -294,13 +322,12 @@ export function buildMemoryTools(username: string, p: UserPaths, opts: Pick<Agen
       if (!content) throw new Error("body is empty");
       if (content.length > SKILL_BODY_MAX) throw new Error(`body is over ${SKILL_BODY_MAX} characters: split it or tighten it`);
       const scope = resolveScope(root, rawScope);
-      const dir = scope.appId ? appSkillsDir(scope.appId) : GLOBAL_SKILLS;
-      const file = `${dir}/${name}/SKILL.md`;
+      const file = `${scope.skillsDir}/${name}/SKILL.md`;
       const exists = fs.existsSync(path.join(root, file));
       if (!opts.ask) return text("Not saved: the user is not available to confirm skills right now.");
       const answer = (
         await opts.ask({
-          question: `${exists ? "Update" : "Save"} skill "${name}" (${scope.appId ? `app ${scope.appId}` : "global"})? When to use: ${desc}. Any other reply is sent back to me as feedback.`,
+          question: `${exists ? "Update" : "Save"} skill "${name}" (${scope.appId ? `app ${scope.appId}` : scope.projectName ? `project ${scope.projectName}` : "global"})? When to use: ${desc}. Any other reply is sent back to me as feedback.`,
           options: ["Save", "Skip"],
           detail: content.length > 4000 ? `${content.slice(0, 4000)}\n… (${content.length - 4000} more characters)` : content,
         })
@@ -322,19 +349,13 @@ export function buildMemoryTools(username: string, p: UserPaths, opts: Pick<Agen
 // ---------- the user's own edits (the memory panel on the agent page) ----------
 // These are the user acting on their own files, so no confirmation card.
 
-/** Every app that has a project memory, with its text. */
-export function listAppMemories(root: string): { id: string; file: string; text: string }[] {
-  let apps: fs.Dirent[] = [];
-  try {
-    apps = fs.readdirSync(path.join(root, "apps"), { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  return apps
-    .filter((a) => a.isDirectory() && !a.name.startsWith("."))
-    .map((a) => ({ id: a.name, file: appMemoryPath(a.name), text: readText(root, appMemoryPath(a.name)) }))
-    .filter((m) => m.text.trim())
-    .sort((a, b) => a.id.localeCompare(b.id));
+/** Every project (app or free) that has a memory, with its text. */
+export function listAppMemories(root: string): { id: string; scope: string; file: string; text: string }[] {
+  const apps = subdirs(root, "apps").map((id) => ({ id, scope: `app:${id}`, file: appMemoryPath(id), text: readText(root, appMemoryPath(id)) }));
+  const free = subdirs(root, "projects")
+    .filter((n) => PROJECT_NAME.test(n))
+    .map((n) => ({ id: n, scope: `project:${n}`, file: projectMemoryPath(n), text: readText(root, projectMemoryPath(n)) }));
+  return [...apps, ...free].filter((m) => m.text.trim()).sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export function readMemory(root: string, scope: MemoryScope): string {
@@ -353,8 +374,7 @@ export function forgetEntry(root: string, scope: MemoryScope, line: string): voi
 
 function skillFile(root: string, scopeRaw: string, name: string): string {
   if (!SKILL_NAME.test(name)) throw new Error("invalid skill name");
-  const scope = resolveScope(root, scopeRaw);
-  return `${scope.appId ? appSkillsDir(scope.appId) : GLOBAL_SKILLS}/${name}/SKILL.md`;
+  return `${resolveScope(root, scopeRaw).skillsDir}/${name}/SKILL.md`;
 }
 
 export function readSkill(root: string, scopeRaw: string, name: string): { file: string; text: string } {

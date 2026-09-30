@@ -38,6 +38,10 @@ export function userDir(dataDir: string, username: string): string {
  * app data (apps/<app>/data/**) is deliberately writable: chats, characters
  * and all RP entities are app files the agent edits like code (SPEC-v2 §1).
  */
+/** A project's uploaded files: an app project's apps/<id>/.project/files/,
+ *  a free project's projects/<name>/files/. */
+export const PROJECT_FILES = /^(apps\/[^/]+\/\.project|projects\/[^/]+)\/files(\/|$)/i;
+
 export const AGENT_WRITE_DENYLIST: readonly { pattern: RegExp; reason: string }[] = [
   { pattern: /^auth\.json$/i, reason: "credentials are never agent-editable" },
   // the real file lives outside the workspace; refuse the name here rather
@@ -51,6 +55,10 @@ export const AGENT_WRITE_DENYLIST: readonly { pattern: RegExp; reason: string }[
   // which the user confirms; a file tool or the shell would skip that
   { pattern: /^(memory|skills)(\/|$)/i, reason: "memory and skills change only through memory_propose / skill_propose (the user confirms each)" },
   { pattern: /^apps\/[^/]+\/\.(memory|skills)(\/|$)/i, reason: "memory and skills change only through memory_propose / skill_propose (the user confirms each)" },
+  { pattern: /^projects\/[^/]+\/\.(memory|skills)(\/|$)/i, reason: "memory and skills change only through memory_propose / skill_propose (the user confirms each)" },
+  // project files are the user's uploads and live outside git, so a write
+  // here could not be undone: the agent reads them, the project page changes them
+  { pattern: PROJECT_FILES, reason: "project files are the user's uploads (outside git, so a change could not be undone); read them, and ask the user to change them on the project page" },
 ];
 
 export function agentWriteDenied(relPath: string): string | null {
@@ -100,6 +108,11 @@ export function gitBoundaryIgnored(relPath: string): boolean {
     ["agent", "assets-store", "store", "repos"].includes(first.toLowerCase()) ||
     // app imports and updates unpack a repository here before it is reviewed
     (first.toLowerCase() === "apps" && segs[1] === ".staging") ||
+    // a free project's import unpacks here first
+    (first.toLowerCase() === "projects" && segs[1] === ".staging") ||
+    // project files: uploads (images, docs) kept by the engine's backup
+    // instead, so neither history nor a push ever carries them
+    PROJECT_FILES.test(norm) ||
     segs.includes("node_modules") ||
     segs.includes("dist")
   );
@@ -117,7 +130,7 @@ export function ensureGitignoreEntries(root: string): boolean {
     cur = "";
   }
   const lines = cur.split("\n").map((l) => l.trim());
-  const needs = ["auth.json", "mcp.json", "agent/", "assets-store/", "store/", "node_modules/", "dist/", "/connections.json", "/speech.json", "apps/.staging/", "/repos/"].filter((e) => !lines.includes(e));
+  const needs = ["auth.json", "mcp.json", "agent/", "assets-store/", "store/", "node_modules/", "dist/", "/connections.json", "/speech.json", "apps/.staging/", "/repos/", "apps/*/.project/files/", "/projects/*/files/", "/projects/.staging/"].filter((e) => !lines.includes(e));
   if (needs.length === 0) return false;
   const head = cur ? cur.replace(/\n*$/, "\n") : "# runtime state + credentials never enter git\n";
   fs.writeFileSync(gi, head + needs.join("\n") + "\n", "utf8");
@@ -184,6 +197,10 @@ assets-store/
 store/
 # app imports and updates unpack a repository here before it is reviewed
 apps/.staging/
+# project files (uploads) are kept by backups, never by git
+apps/*/.project/files/
+/projects/*/files/
+/projects/.staging/
 `;
 
 /**

@@ -256,7 +256,8 @@ export async function gitClone(url: string, dest: string, ref?: string): Promise
 
 /** Files that never cross an update: the user's own content and derived
  *  artifacts (the engine rebuilds them after the swap). */
-export const UPDATE_KEEP = new Set(["data", "node_modules", "dist"]);
+// .project: a project's settings and uploads are the user's, never app code
+export const UPDATE_KEEP = new Set(["data", "node_modules", "dist", ".project"]);
 
 /** Drop the .git directory from a staged clone — provenance lives in the
  *  manifest (source.git + head), and a nested repo inside the workspace is

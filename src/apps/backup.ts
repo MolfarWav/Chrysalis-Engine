@@ -44,7 +44,7 @@ const SKIPPED_DIRS = new Set(["node_modules", "dist", ".git"]);
 /** Every file of an installed app, by relative path. Symlinks are skipped,
  *  never followed, so nothing an app plants can pull a file from outside its
  *  folder into the archive. */
-function appFiles(root: string): Record<string, Uint8Array> {
+function appFiles(root: string, what = "app"): Record<string, Uint8Array> {
   const files: Record<string, Uint8Array> = {};
   let total = 0;
   const walk = (rel: string) => {
@@ -56,7 +56,7 @@ function appFiles(root: string): Record<string, Uint8Array> {
       else if (entry.isFile()) {
         const file = path.join(abs, entry.name);
         total += fs.statSync(file).size;
-        if (total > BACKUP_MAX_BYTES) throw new BackupError("this app is too large to export (over 512 MB)", 413);
+        if (total > BACKUP_MAX_BYTES) throw new BackupError(`this ${what} is too large to export (over 512 MB)`, 413);
         files[childRel] = fs.readFileSync(file);
       }
     }
@@ -82,6 +82,16 @@ export async function buildBackup(
   });
 }
 
+/** Zip a folder the same way an app is zipped (no derived dirs, no links),
+ *  every entry under `prefix/`. Free projects export through this. */
+export async function zipFolder(dir: string, prefix: string, what: string): Promise<Uint8Array> {
+  const files: Record<string, Uint8Array> = {};
+  for (const [rel, body] of Object.entries(appFiles(fs.realpathSync(dir), what))) files[`${prefix}/${rel}`] = body;
+  return new Promise((resolve, reject) => {
+    zipFiles(files, { level: 3 }, (err, out) => (err ? reject(err) : resolve(out)));
+  });
+}
+
 /** A zip entry's path when it is safe to create under a folder; null skips
  *  it (folders, OS clutter, derived dirs); throws for a path that tries to
  *  leave. */
@@ -102,6 +112,12 @@ function entryPath(name: string): string | null {
  * in it.
  */
 export function extractBackup(zip: Uint8Array, dest: string): { root: string; meta: BackupMeta | null } {
+  return locateBackup(extractZip(zip, dest));
+}
+
+/** Unpack a zip into `dest` with every check a backup gets (entry names,
+ *  counted sizes, plain files only). Returns the real path of `dest`. */
+export function extractZip(zip: Uint8Array, dest: string): string {
   if (zip.byteLength > BACKUP_MAX_BYTES) throw new BackupError("the file is too large (over 512 MB)", 413);
   if (zip[0] !== 0x50 || zip[1] !== 0x4b) throw new BackupError("not a zip file", 400);
   fs.mkdirSync(dest, { recursive: true });
@@ -153,8 +169,7 @@ export function extractBackup(zip: Uint8Array, dest: string): { root: string; me
     failure ??= new BackupError(`the zip cannot be read: ${(e as Error).message}`);
   }
   if (failure) throw failure;
-
-  return locateBackup(destRoot);
+  return destRoot;
 }
 
 /** The app inside an unpacked backup: at the top, or inside the single

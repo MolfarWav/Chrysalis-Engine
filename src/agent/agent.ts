@@ -22,6 +22,7 @@ import { clampThinkingLevel, isContextOverflow, type AssistantMessage } from "@e
 import { clampMaxTokens, fitContext, newTrimState } from "./context-budget.js";
 import { appTouched, buildMemoryTools, memoryPromptSection, projectContextFor } from "./memory.js";
 import { readSandboxSettings } from "../sandbox/network.js";
+import { projectLayout, projectPromptSection, readSettings } from "./projects.js";
 
 const ADMIN_TOOLS_PROMPT = `You are also the ADMIN agent for this instance: create users with admin_create_user, list them with admin_list_users. New user tokens are shown exactly once.`;
 
@@ -130,6 +131,8 @@ export interface SessionStartRecord {
   type: "start";
   at: number;
   user: string;
+  /** The project the chat was started in ("app:<id>" / "project:<name>"). */
+  project?: string;
 }
 
 /** User-set session title (metadata only — never enters the model context). */
@@ -153,6 +156,8 @@ export interface SessionSummary {
   lastAt: number | null;
   title: string | null;
   archived: boolean;
+  /** The project the chat belongs to; null for a plain chat. */
+  project: string | null;
 }
 
 /** Sidebar title: last rename wins; otherwise derive one from the first
@@ -202,6 +207,7 @@ export function listSessions(p: UserPaths): SessionSummary[] {
         let title: string | null = null;
         let firstUser: string | null = null;
         let archived = false;
+        let project: string | null = null;
         for (const line of fs.readFileSync(full, "utf8").split("\n")) {
           if (!line.trim()) continue;
           try {
@@ -215,6 +221,7 @@ export function listSessions(p: UserPaths): SessionSummary[] {
               // finished run counts toward the run total
               lastAt = Math.max(lastAt ?? 0, r.at);
               if (firstUser === null && r.user) firstUser = r.user;
+              if (typeof r.project === "string" && PROJECT_ID.test(r.project)) project = r.project;
             } else if (r.type === "rename") {
               title = r.title;
               lastAt = Math.max(lastAt ?? 0, r.at);
@@ -224,7 +231,7 @@ export function listSessions(p: UserPaths): SessionSummary[] {
             }
           } catch { /* skip bad line */ }
         }
-        const row = { sessionId, runs, lastAt, title: title ?? autoTitle(firstUser ?? ""), archived };
+        const row = { sessionId, runs, lastAt, title: title ?? autoTitle(firstUser ?? ""), archived, project };
         // prune stale keys for this file so the cache stays O(sessions)
         for (const k of sessionListCache.keys()) if (k.startsWith(`${full}:`)) sessionListCache.delete(k);
         sessionListCache.set(key, row);
@@ -233,6 +240,20 @@ export function listSessions(p: UserPaths): SessionSummary[] {
       .sort((a, b) => (b.lastAt ?? 0) - (a.lastAt ?? 0));
   } catch {
     return [];
+  }
+}
+
+const PROJECT_ID = /^(app:[A-Za-z0-9][A-Za-z0-9_-]{0,63}|project:[a-z0-9][a-z0-9-]{0,47})$/;
+
+/** The project a session was started in, from its start record; null for a
+ *  plain chat or a session that does not exist yet. */
+export function sessionProject(p: UserPaths, sessionId: string): string | null {
+  try {
+    const first = fs.readFileSync(sessionFile(p, sessionId), "utf8").split("\n", 1)[0] ?? "";
+    const r = JSON.parse(first) as Partial<SessionStartRecord>;
+    return r.type === "start" && typeof r.project === "string" && PROJECT_ID.test(r.project) ? r.project : null;
+  } catch {
+    return null;
   }
 }
 
@@ -266,6 +287,8 @@ export class UserAgent {
     private sFile: string,
     private budget: { force: boolean },
     private svc: Pick<UserModelService, "costOf">,
+    /** The project this session belongs to (null: a plain chat). */
+    readonly project: string | null = null,
   ) {}
 
   /** Async factory: model resolution requires provider auth state. */
@@ -289,11 +312,25 @@ export class UserAgent {
       settings?: ServerSettings
       /** Set up a new account's workspace (admin_create_user) */
       provisionAccount?: (username: string) => Promise<unknown>
+      /** Project for a NEW session; an existing one keeps the project its
+       *  start record names. */
+      project?: string
     } = {},
   ): Promise<UserAgent> {
     const isAdmin = users.get(username)?.role === "admin";
     const sessionId = opts.sessionId ?? new Date().toISOString().slice(0, 10) + "-" + Math.random().toString(36).slice(2, 8);
     const sFile = sessionFile(paths, sessionId);
+    // an existing session's project is fixed by its start record
+    let project = fs.existsSync(sFile) ? sessionProject(paths, sessionId) : (opts.project ?? null);
+    if (project) {
+      try {
+        projectLayout(paths.root, project);
+      } catch {
+        // the app was uninstalled or the project deleted: a plain chat now
+        project = null;
+      }
+    }
+    const projectSettings = project ? readSettings(paths.root, projectLayout(paths.root, project)) : null;
 
     let tools: AgentTool[] = [
       ...buildUserTools(username, paths, {
@@ -326,13 +363,14 @@ export class UserAgent {
     // when the session auto-compacts
     const available = (await svc.models.getAvailable()).map((m) => svc.withOverride(m));
     if (available.length === 0) throw new Error(`no models configured for ${username}`);
-    // Deterministic pick: request model → user settings default → instance
-    // default → faux (tests) → sorted first.
+    // Deterministic pick: request model → project default → user settings
+    // default → instance default → faux (tests) → sorted first.
     const userDefault = readUserDefaultModel(paths);
     const pick = (pattern: string | undefined) =>
       pattern ? available.find((m) => `${m.provider}/${m.id}` === pattern || m.id === pattern) : undefined;
     const model =
       pick(opts.model) ??
+      pick(projectSettings?.model ?? undefined) ??
       pick(userDefault) ??
       pick(cfg.defaultModel ?? undefined) ??
       available.find((m) => m.provider === "faux") ??
@@ -343,13 +381,14 @@ export class UserAgent {
     // clamped by pi-ai's clampThinkingLevel (walks the ladder to a supported one)
     const level = clampThinkingLevel(
       model as Parameters<typeof clampThinkingLevel>[0],
-      opts.reasoning ?? readUserReasoning(paths, model.reasoning === true),
+      opts.reasoning ?? (isReasoningLevel(projectSettings?.reasoning) ? projectSettings.reasoning : readUserReasoning(paths, model.reasoning === true)),
     );
     // context budget: trim what is sent when it outgrows the window, and never
     // ask for more output than the window has left (see context-budget.ts)
     const budget = { force: false };
     const trim = newTrimState();
-    const shownProjects = new Set<string>();
+    // a project chat has its project in the system prompt already
+    const shownProjects = new Set<string>(project?.startsWith("app:") ? [project.slice(4)] : []);
     const agent: Agent = new Agent({
       transformContext: async (msgs) => {
         // pi-agent-core's contract: this hook must never throw
@@ -365,7 +404,11 @@ export class UserAgent {
       },
       initialState: {
         model,
-        systemPrompt: systemPromptFor(username, isAdmin, paths, opts.sandbox) + memoryPromptSection(paths.root) + (opts.mode === "plan" ? PLAN_MODE_PROMPT : ""),
+        systemPrompt:
+          systemPromptFor(username, isAdmin, paths, opts.sandbox) +
+          memoryPromptSection(paths.root) +
+          (project ? projectPromptSection(paths.root, project) : "") +
+          (opts.mode === "plan" ? PLAN_MODE_PROMPT : ""),
         tools,
         messages,
         // pi-agent-core reads the level from state; undefined = "off"
@@ -390,7 +433,7 @@ export class UserAgent {
         return svc.streamFn(m, c, maxTokens !== undefined ? { ...o, maxTokens } : o, sessionId);
       },
     });
-    return new UserAgent(agent, sessionId, sFile, budget, svc);
+    return new UserAgent(agent, sessionId, sFile, budget, svc, project);
   }
 
   /** The model this session runs on, for one-shot calls made on its behalf. */
@@ -620,7 +663,7 @@ export class UserAgent {
     try {
       if (fs.existsSync(this.sFile)) return;
       fs.mkdirSync(path.dirname(this.sFile), { recursive: true });
-      const rec: SessionStartRecord = { type: "start", at: Date.now(), user: userMessage };
+      const rec: SessionStartRecord = { type: "start", at: Date.now(), user: userMessage, ...(this.project ? { project: this.project } : {}) };
       fs.writeFileSync(this.sFile, JSON.stringify(rec) + "\n", "utf8");
     } catch (e) {
       log.warn(`[agent:${this.sessionId}] session open failed: ${(e as Error).message}`);
@@ -1104,6 +1147,7 @@ function systemPromptFor(username: string, isAdmin: boolean, paths: UserPaths, s
   - data/                   app-owned data files (git-tracked): whatever that app stores, in its own layout
   - node_modules/, dist/    — derived (installed / browser-built, outside git). dist/.chrysalis-build.json holds the last build's errors.
 - plugins/<id>/             — top-level always-on plugins (same format as bundled)
+- projects/<name>/          — the user's free projects (plugins, research, ideas): PROJECT.md instructions, project.json settings, files/ reference uploads. An app's own project settings and uploads sit in apps/<id>/.project/. Uploads (files/) are outside git and read-only for you.
 (User-managed config is NOT here: MCP servers, model connections, speech endpoints and settings all live outside this workspace with the credentials; the Settings UI owns them and you do not read or edit them. Asking the user to change one there is the right move when something is missing.)
 - providers.json            — custom model providers { providers: { id: { api: openai-completions|anthropic-messages, baseUrl, models: [...] | "auto" } } }
 - agent/sessions/           — your own session transcripts (readable)

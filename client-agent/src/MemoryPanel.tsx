@@ -156,7 +156,7 @@ export function MemoryPanel(): ReactNode {
             <div className="grid gap-5">
               <MemorySection title="About you and everything" file={data.global.file} scope="global" text={data.global.text} onChange={load} onError={onError} />
               {data.apps.map((a) => (
-                <MemorySection key={a.id} title={`Project: ${a.id}`} file={a.file} scope={`app:${a.id}`} text={a.text} onChange={load} onError={onError} />
+                <MemorySection key={a.id} title={`Project: ${a.id}`} file={a.file} scope={a.scope ?? `app:${a.id}`} text={a.text} onChange={load} onError={onError} />
               ))}
               <p className="text-muted-foreground text-xs">
                 A project appears here once it has memory. Ask the agent to remember something about an app, or it will offer to at the end of a task.
@@ -175,7 +175,7 @@ export function MemoryPanel(): ReactNode {
                   >
                     <span className="text-sm font-medium">
                       {s.name}
-                      {s.scope !== "global" ? <span className="text-muted-foreground ml-2 text-xs font-normal">{s.scope.replace(/^app:/, "app ")}</span> : null}
+                      {s.scope !== "global" ? <span className="text-muted-foreground ml-2 text-xs font-normal">{s.scope.replace(/^app:/, "app ").replace(/^project:/, "project ")}</span> : null}
                     </span>
                     <span className="text-muted-foreground text-xs">{s.description}</span>
                   </button>

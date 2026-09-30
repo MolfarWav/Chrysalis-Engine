@@ -94,6 +94,8 @@ export interface ModelInfo {
   reasoning: boolean;
   /** Thinking levels this model supports, per pi-ai's getSupportedThinkingLevels. */
   reasoningLevels: string[];
+  /** The model takes images as input (from the provider's catalog). */
+  images: boolean;
   /** USD per million tokens (user override first, then the catalog). null when
    *  nobody knows what this model costs — spend for it is NOT reported. */
   pricing: ModelPricing | null;
@@ -525,6 +527,7 @@ export class UserModelService {
       connectionName: this.connectionNames.get(m.provider) ?? null,
       reasoning: m.reasoning === true,
       reasoningLevels: getSupportedThinkingLevels(m),
+      images: Array.isArray(m.input) && m.input.includes("image"),
       pricing: pricing[`${m.provider}/${m.id}`] ?? normalizePricing(m.cost),
     }));
   }

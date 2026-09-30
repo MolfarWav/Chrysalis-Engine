@@ -517,3 +517,16 @@ describe("image models served on a dedicated images endpoint", () => {
     }
   }, 30_000);
 });
+
+describe("models the pickers show", () => {
+  it("with no default set, a request without a model runs the first shown model", async () => {
+    const svc = makeService();
+    const handle = fauxProvider({ models: [{ id: "faux-first" }, { id: "faux-second" }] });
+    handle.setResponses([fauxAssistantMessage("B")]);
+    svc.models.setProvider(handle.provider);
+    expect(svc.setShown(["faux/faux-second"], true)).toEqual(["faux/faux-second"]);
+    expect((await svc.generate({ messages: [{ role: "user", content: "hi" }] })).model).toBe("faux/faux-second");
+    // hiding does not stop a model someone names from running
+    expect(svc.setShown(["faux/faux-second"], false)).toEqual([]);
+  }, 20_000);
+});

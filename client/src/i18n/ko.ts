@@ -431,6 +431,15 @@ const dict = {
   "These apps say they need a different version of Chrysalis and may stop working after the update: {apps}": "다음 앱은 다른 버전의 Chrysalis가 필요하다고 하며 업데이트 후 작동하지 않을 수 있습니다: {apps}",
   "The last update did not work: {error}": "마지막 업데이트가 실패했습니다: {error}",
   "Some of its data was not upgraded yet and will be tried again when the app opens: {plugins}": "일부 데이터가 아직 업그레이드되지 않았으며 앱을 열 때 다시 시도합니다: {plugins}",
+  "Choose which models appear in the model pickers, in the agent and in every app.": "에이전트와 모든 앱의 모델 선택기에 표시할 모델을 고르세요.",
+  "Search models…": "모델 검색…",
+  "Nothing is chosen, so every model is shown. Tick the models you use, and only those appear in the pickers.": "선택된 것이 없어 모든 모델이 표시됩니다. 사용하는 모델에 체크하면 그 모델만 선택기에 나타납니다.",
+  "{shown} of {total} models shown": "{total}개 중 {shown}개 모델 표시",
+  "Show every model": "모든 모델 표시",
+  "All": "모두",
+  "None": "없음",
+  "No models match.": "일치하는 모델이 없습니다.",
+  "No models yet. Add an API connection first.": "아직 모델이 없습니다. 먼저 API 연결을 추가하세요.",
 }
 
 export default dict

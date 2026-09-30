@@ -179,6 +179,40 @@ afterEach(() => {
     }
   });
 
+  it("pickers list only the models switched on; ?all=1 lists every model with its flag", async () => {
+    const json = { ...h(), "content-type": "application/json" };
+    const post = await app.request("/v1/settings/connections", {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ name: "many", api: "openai-completions", baseUrl: "http://127.0.0.1:9/v1", models: [{ id: "m-a" }, { id: "m-b" }, { id: "m-c" }], key: "sk-stub" }),
+    });
+    const { connection } = (await post.json()) as { connection: { id: string } };
+    await new Promise((r) => setTimeout(r, 200));
+    const list = async (q = "") => ((await (await app.request(`/v1/models${q}`, { headers: h() })).json()) as { models: Array<{ provider: string; modelId: string; shown?: boolean }>; filtered?: boolean });
+    const ids = (ms: Array<{ provider: string; modelId: string }>) => ms.filter((m) => m.provider === connection.id).map((m) => m.modelId).sort();
+    // nothing chosen yet: every model shows
+    expect(ids((await list()).models)).toEqual(["m-a", "m-b", "m-c"]);
+
+    const put = (refs: unknown, shown: unknown) => app.request("/v1/models/shown", { method: "PUT", headers: json, body: JSON.stringify({ refs, shown }) });
+    expect((await put([`${connection.id}/m-a`, `${connection.id}/m-c`], true)).status).toBe(200);
+    expect(ids((await list()).models)).toEqual(["m-a", "m-c"]);
+    const all = await list("?all=1");
+    expect(all.filtered).toBe(true);
+    expect(all.models.filter((m) => m.provider === connection.id).map((m) => [m.modelId, m.shown]).sort()).toEqual([["m-a", true], ["m-b", false], ["m-c", true]]);
+
+    expect((await put([`${connection.id}/m-c`], false)).status).toBe(200);
+    expect(ids((await list()).models)).toEqual(["m-a"]);
+    expect((await put(["no-slash"], true)).status).toBe(400);
+    expect((await put([`${connection.id}/m-a`], "yes")).status).toBe(400);
+
+    // the only switched-on model's connection goes away: the pickers fall
+    // back to every model instead of going empty
+    await put([`${connection.id}/m-a`], false);
+    await put(["gone/model"], true);
+    expect(ids((await list()).models)).toEqual(["m-a", "m-b", "m-c"]);
+    expect((await list("?all=1")).filtered).toBe(false);
+  });
+
   it("connection mutations warm the rebuilt catalog, then broadcast connections_changed", async () => {
     const seen: Array<{ type: string; payload: unknown }> = [];
     const origEmit = bus.emit.bind(bus);

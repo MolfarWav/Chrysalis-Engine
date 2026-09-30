@@ -433,6 +433,15 @@ const en = {
   "{plugin} can now use:": "",
   "· by {author}": "",
   "“{name}” created": "",
+  "Choose which models appear in the model pickers, in the agent and in every app.": "",
+  "Search models…": "",
+  "Nothing is chosen, so every model is shown. Tick the models you use, and only those appear in the pickers.": "",
+  "{shown} of {total} models shown": "",
+  "Show every model": "",
+  "All": "",
+  "None": "",
+  "No models match.": "",
+  "No models yet. Add an API connection first.": "",
 } as const
 
 export default en

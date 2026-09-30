@@ -914,7 +914,7 @@ describe("A2 the bridge's second lock (server side)", () => {
     });
     vm.runInContext(source, context);
     const host = win.ChrysalisBridgeHost as { allowedRequest: (a: string, m: string, p: string, t?: boolean) => boolean };
-    const paths = ["/v1/apps/x/chats", "/v1/apps/x/tree", "/v1/apps/x/mcp", "/v1/apps/x/mcp/s", "/v1/apps/y/chats", "/v1/models", "/v1/models/context",
+    const paths = ["/v1/apps/x/chats", "/v1/apps/x/tree", "/v1/apps/x/mcp", "/v1/apps/x/mcp/s", "/v1/apps/y/chats", "/v1/models", "/v1/models/context", "/v1/models/shown",
       "/v1/models/pricing", "/v1/images", "/v1/images/models", "/v1/assets", "/v1/assets/abc", "/v1/audio/speech", "/v1/audio/speech/endpoints",
       "/v1/audio/speech/endpoints/e", "/v1/settings/connections", "/v1/settings/providers", "/v1/settings", "/v1/plugins", "/v1/plugins/p/approve",
       "/v1/embeddings/config", "/v1/embeddings/probe", "/v1/agent", "/v1/mcp", "/v1/shell", "/v1/apps", "/v1/apps/x/dev", "/v1/apps/x/build", "/v1/apps/x/build/fs", "/v1/apps/x/export",

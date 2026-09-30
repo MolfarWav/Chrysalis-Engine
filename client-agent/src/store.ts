@@ -7,6 +7,7 @@ import {
   getSettings,
   listMcp,
   listModels,
+  setModelsShown,
   sendAgent,
   sessionsApi,
   steerAgent,
@@ -41,6 +42,10 @@ export interface AgentState {
   banner: Banner | null
   ask: PendingAsk | null
   models: EngineModel[]
+  /** a short list of models is chosen (Settings > Models or the picker's stars) */
+  modelsFiltered: boolean
+  /** star a model into the short list, or take it out */
+  setModelShown: (ref: string, shown: boolean) => Promise<void>
   model: string | null
   reasoning: string
   mode: "normal" | "plan" | "accept"
@@ -120,6 +125,7 @@ export const useAgent = create<AgentState>()((set, get) => {
     banner: null,
     ask: null,
     models: [],
+    modelsFiltered: false,
     model: prefs.get("agent-ui-model"),
     reasoning: prefs.get("agent-ui-reasoning") ?? "",
     mode: storedMode(),
@@ -131,9 +137,10 @@ export const useAgent = create<AgentState>()((set, get) => {
 
     init: async () => {
       try {
-        const [settings, models] = await Promise.all([getSettings(), listModels()])
+        const [settings, list] = await Promise.all([getSettings(), listModels()])
         set({
-          models,
+          models: list.models,
+          modelsFiltered: list.filtered,
           model: get().model ?? settings.model ?? null,
           reasoning: get().reasoning || settings.reasoning || "",
         })
@@ -355,6 +362,16 @@ export const useAgent = create<AgentState>()((set, get) => {
       }
     },
 
+    setModelShown: async (ref, shown) => {
+      try {
+        await setModelsShown([ref], shown)
+        const list = await listModels()
+        set({ models: list.models, modelsFiltered: list.filtered })
+      } catch (e) {
+        set({ banner: { kind: "error", text: e instanceof Error ? e.message : String(e) } })
+      }
+    },
+
     setReasoning: (r) => {
       prefs.set("agent-ui-reasoning", r)
       set({ reasoning: r })
@@ -422,7 +439,7 @@ export function connectWs(): void {
       // catalog is stale. The engine emits after discovery finished, so the
       // re-pull lands the fresh list immediately.
       listModels()
-        .then((models) => useAgent.setState({ models }))
+        .then((list) => useAgent.setState({ models: list.models, modelsFiltered: list.filtered }))
         .catch(() => undefined)
       return
     }

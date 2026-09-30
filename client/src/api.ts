@@ -36,6 +36,22 @@ export interface NamedPromptFormat extends PromptFormat {
   name: string
 }
 
+/** One model as Settings > Models lists it: every model, each marked with
+ *  whether the pickers show it. */
+export interface PickerModel {
+  provider: string
+  modelId: string
+  label: string
+  connectionName: string | null
+  shown: boolean
+}
+
+export const modelsApi = {
+  /** filtered: false while nothing is chosen, which shows every model. */
+  all: () => api<{ models: PickerModel[]; filtered: boolean }>("GET", "/v1/models?all=1"),
+  setShown: (refs: string[], shown: boolean) => api<{ ok: boolean; shown: string[] }>("PUT", "/v1/models/shown", { refs, shown }),
+}
+
 export const listPromptFormats = () =>
   api<{ formats: NamedPromptFormat[] }>("GET", "/v1/models/prompt-formats").then((r) => r.formats)
 

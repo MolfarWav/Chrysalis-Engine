@@ -393,6 +393,31 @@ export class UserModelService {
     return file;
   }
 
+  /** The models the pickers offer (models-shown.json, a list of
+   *  "<provider>/<model>"). Empty means every model: three connections can
+   *  bring a thousand models, and the user switches on the few they use.
+   *  Generation ignores this: a chat pinned to a hidden model still runs. */
+  shownModels(): string[] {
+    try {
+      const raw = JSON.parse(fs.readFileSync(path.join(this.paths.root, "models-shown.json"), "utf8")) as { shown?: unknown };
+      return Array.isArray(raw.shown) ? raw.shown.filter((r): r is string => typeof r === "string" && r.includes("/")) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Show or hide models in the pickers. Returns the new list. */
+  setShown(refs: readonly string[], shown: boolean): string[] {
+    const set = new Set(this.shownModels());
+    for (const ref of refs) {
+      if (shown) set.add(ref);
+      else set.delete(ref);
+    }
+    const list = [...set].sort();
+    fs.writeFileSync(path.join(this.paths.root, "models-shown.json"), JSON.stringify({ shown: list }, null, 2));
+    return list;
+  }
+
   /** The rates that actually apply to a model: the user's table first, then
    *  the catalog. null when neither quotes a price. */
   private pricingFor(m: { provider: string; id: string; cost?: unknown }): ModelPricing | null {
@@ -540,7 +565,10 @@ export class UserModelService {
       const found = available.find((m) => `${m.provider}/${m.id}` === def || m.id === def);
       if (found) return this.withOverride(found);
     }
-    return this.withOverride(available[0]!);
+    // no default anywhere: the first model the pickers offer, so what they
+    // show as the current model is what runs
+    const shown = new Set(this.shownModels());
+    return this.withOverride(available.find((m) => shown.has(`${m.provider}/${m.id}`)) ?? available[0]!);
   }
 
   /**

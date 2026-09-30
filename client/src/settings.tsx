@@ -26,6 +26,8 @@ import {
   avatarApi,
   speechApi,
   listPromptFormats,
+  modelsApi,
+  type PickerModel,
   type PromptFormat,
   type SpeechEndpoint,
   type EngineConnection,
@@ -75,13 +77,14 @@ const LOCAL_SERVERS: LocalPick[] = [
 type OAuthPick = { id: string; providerId: string; label: string; kind: "builtin"; baseUrl: null; apiKeyAuth: false; hasKey: false; authKind: "oauth" | "credentials"; needsGateway?: boolean }
 type ProviderPick = EngineProvider | CustomPick | OAuthPick | LocalPick
 
-export type TabValue = "general" | "api" | "speech" | "agent" | "mcp" | "developer" | "server" | "users"
+export type TabValue = "general" | "api" | "models" | "speech" | "agent" | "mcp" | "developer" | "server" | "users"
 
 export function SettingsBody(props: { onClose: () => void; me: Me; initialTab?: TabValue | null; onLogout: () => void }) {
   const [tab, setTab] = useState<TabValue>(props.initialTab ?? "api")
   const tabs: Array<{ value: TabValue; label: string; icon: ReactNode }> = [
     { value: "general", label: tr("General"), icon: <IconSmall name="outline-sliders" /> },
     { value: "api", label: tr("API connections"), icon: <Icon name="cloud-upload" /> },
+    { value: "models", label: tr("Models"), icon: <Icon name="providers" /> },
     { value: "speech", label: tr("Speech"), icon: <Icon name="speaker" /> },
     { value: "agent", label: tr("Agent"), icon: <Icon name="brain" /> },
     { value: "mcp", label: tr("MCP servers"), icon: <Icon name="terminal-active" /> },
@@ -109,6 +112,7 @@ export function SettingsBody(props: { onClose: () => void; me: Me; initialTab?: 
     <>
       {v === "general" && <GeneralTab me={props.me} onLogout={props.onLogout} />}
       {v === "api" && <ApiTab />}
+      {v === "models" && <ModelsTab />}
       {v === "speech" && <SpeechTab />}
       {v === "agent" && <AgentTab />}
       {v === "mcp" && <McpTab />}
@@ -147,6 +151,9 @@ export function SettingsBody(props: { onClose: () => void; me: Me; initialTab?: 
           </Tabs.Content>
           <Tabs.Content value="api" className="no-scrollbar">
             <ApiTab />
+          </Tabs.Content>
+          <Tabs.Content value="models" className="no-scrollbar">
+            <ModelsTab />
           </Tabs.Content>
           <Tabs.Content value="speech" className="no-scrollbar">
             <SpeechTab />
@@ -823,6 +830,110 @@ function ApiTab() {
                     connections.refetch()
                   }}
                 />}
+      </div>
+    </Pane>
+  )
+}
+
+/** Which models the pickers offer (the agent's and every app's). Grouped by
+ *  connection, because three connections can bring a thousand models and
+ *  the same model name from two of them is otherwise impossible to tell apart. */
+function ModelsTab() {
+  const res = useResource(() => modelsApi.all())
+  const [query, setQuery] = useState("")
+  const [open, setOpen] = useState<Record<string, boolean>>({})
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState("")
+  const models = res.data?.models ?? []
+  const filtered = res.data?.filtered ?? false
+  const refOf = (m: PickerModel) => `${m.provider}/${m.modelId}`
+
+  const change = async (refs: string[], on: boolean) => {
+    // nothing chosen shows every model; the first tick starts the short list
+    if (!filtered && !on) return
+    setBusy(true)
+    setErr("")
+    try {
+      await modelsApi.setShown(refs, on)
+      await res.refetch()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const q = query.trim().toLowerCase()
+  const groups = new Map<string, PickerModel[]>()
+  for (const m of models) {
+    const name = m.connectionName ?? m.provider
+    if (q && !`${m.label} ${m.modelId} ${name}`.toLowerCase().includes(q)) continue
+    groups.set(name, [...(groups.get(name) ?? []), m])
+  }
+  const sorted = [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, list]) => [name, list.sort((a, b) => a.label.localeCompare(b.label))] as const)
+  // a model counts as chosen only once a short list exists
+  const chosen = (m: PickerModel) => filtered && m.shown
+  const shownCount = models.filter(chosen).length
+
+  return (
+    <Pane title={tr("Models")} description={tr("Choose which models appear in the model pickers, in the agent and in every app.")}>
+      <div className="flex flex-col gap-3 pb-4">
+        <div className="flex items-center gap-2">
+          <input className={inputClass} placeholder={tr("Search models…")} value={query} onChange={(e) => setQuery(e.currentTarget.value)} />
+          {filtered ? <Button variant="ghost" size="normal" disabled={busy} onClick={() => void change(models.filter((m) => m.shown).map(refOf), false)}>
+              {tr("Show every model")}
+            </Button> : null}
+        </div>
+        <p className="text-12 text-ink-muted">
+          {filtered
+            ? tr("{shown} of {total} models shown", { shown: shownCount, total: models.length })
+            : tr("Nothing is chosen, so every model is shown. Tick the models you use, and only those appear in the pickers.")}
+        </p>
+        {err ? <div className="text-12 text-danger">{err}</div> : null}
+        {res.loading && !res.data ? <div className="text-13 text-ink-faint">{tr("Loading…")}</div> : null}
+        {!res.loading && !models.length ? <div className="rounded-lg border border-dashed border-line px-3 py-4 text-center text-13 text-ink-faint">
+            {tr("No models yet. Add an API connection first.")}
+          </div> : null}
+        {models.length && !sorted.length ? <div className="text-13 text-ink-faint">{tr("No models match.")}</div> : null}
+        {sorted.map(([name, list]) => {
+          const expanded = q ? true : open[name] ?? (sorted.length === 1 || list.length <= 12)
+          const on = list.filter(chosen).length
+          return (
+            <section key={name} className="rounded-lg border border-line">
+              <div className="flex items-center gap-2 px-3 py-2">
+                <button className="flex min-w-0 flex-1 items-center gap-2 text-left text-13 font-medium text-ink" onClick={() => setOpen({ ...open, [name]: !expanded })}>
+                  <IconSmall name={expanded ? "chevron-down" : "chevron-right"} size="small" />
+                  <ProviderIcon id={list[0]?.provider ?? ""} className="size-4 shrink-0 text-icon" />
+                  <span className="truncate">{name}</span>
+                  <span className="shrink-0 text-11 font-normal text-ink-faint">{on}/{list.length}</span>
+                </button>
+                <Button variant="ghost" size="small" disabled={busy} onClick={() => void change(list.map(refOf), true)}>
+                  {tr("All")}
+                </Button>
+                <Button variant="ghost" size="small" disabled={busy} onClick={() => void change(list.map(refOf), false)}>
+                  {tr("None")}
+                </Button>
+              </div>
+              {expanded ? <div className="flex flex-col border-t border-line py-1">
+                  {list.map((m) => (
+                    <label key={refOf(m)} className="flex items-center gap-2 px-3 py-1 text-13 text-ink hover:bg-hover">
+                      <input
+                        type="checkbox"
+                        className="size-4 shrink-0 accent-[var(--c-contrast)]"
+                        checked={chosen(m)}
+                        disabled={busy}
+                        onChange={(e) => void change([refOf(m)], e.currentTarget.checked)}
+                      />
+                      <span className="min-w-0 truncate">{m.label}</span>
+                      {m.label !== m.modelId ? <span className="min-w-0 truncate text-11 text-ink-faint">{m.modelId}</span> : null}
+                    </label>
+                  ))}
+                </div> : null}
+            </section>
+          )
+        })}
       </div>
     </Pane>
   )

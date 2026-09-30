@@ -431,6 +431,15 @@ const dict = {
   "These apps say they need a different version of Chrysalis and may stop working after the update: {apps}": "这些应用声明需要其他版本的 Chrysalis，更新后可能无法正常工作：{apps}",
   "The last update did not work: {error}": "上次更新未成功：{error}",
   "Some of its data was not upgraded yet and will be tried again when the app opens: {plugins}": "部分数据尚未升级，将在打开应用时重试：{plugins}",
+  "Choose which models appear in the model pickers, in the agent and in every app.": "选择在模型选择器中显示哪些模型，适用于智能体和所有应用。",
+  "Search models…": "搜索模型…",
+  "Nothing is chosen, so every model is shown. Tick the models you use, and only those appear in the pickers.": "尚未选择，因此显示全部模型。勾选你使用的模型后，选择器中只会显示这些模型。",
+  "{shown} of {total} models shown": "已显示 {shown} / {total} 个模型",
+  "Show every model": "显示全部模型",
+  "All": "全部",
+  "None": "无",
+  "No models match.": "没有匹配的模型。",
+  "No models yet. Add an API connection first.": "还没有模型。请先添加一个 API 连接。",
 }
 
 export default dict

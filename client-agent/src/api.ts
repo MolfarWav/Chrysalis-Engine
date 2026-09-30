@@ -69,6 +69,9 @@ export interface EngineModel {
   reasoning: boolean
   reasoningLevels: string[]
   contextWindow: number | null
+  /** The pickers offer it (Settings > Models); every model is shown while
+   *  nothing is chosen. */
+  shown: boolean
 }
 
 export interface McpServer {
@@ -152,8 +155,14 @@ export function answerAgent(sessionId: string, id: string, answer: string): Prom
   return api("POST", "/v1/agent/answer", { sessionId, id, answer })
 }
 
-export function listModels(): Promise<EngineModel[]> {
-  return api<{ models: EngineModel[] }>("GET", "/v1/models").then((r) => r.models ?? [])
+/** Every model, each marked shown or not, so the picker can offer the hidden
+ *  ones on a search. filtered: false while nothing is chosen. */
+export function listModels(): Promise<{ models: EngineModel[]; filtered: boolean }> {
+  return api<{ models?: EngineModel[]; filtered?: boolean }>("GET", "/v1/models?all=1").then((r) => ({ models: r.models ?? [], filtered: r.filtered === true }))
+}
+
+export function setModelsShown(refs: string[], shown: boolean): Promise<{ ok: boolean }> {
+  return api("PUT", "/v1/models/shown", { refs, shown })
 }
 
 export function getSettings(): Promise<{ model: string | null; reasoning: string | null }> {

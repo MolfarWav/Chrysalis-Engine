@@ -431,6 +431,15 @@ const dict = {
   "These apps say they need a different version of Chrysalis and may stop working after the update: {apps}": "Ces apps indiquent avoir besoin d'une autre version de Chrysalis et risquent de ne plus fonctionner après la mise à jour : {apps}",
   "The last update did not work: {error}": "La dernière mise à jour n'a pas fonctionné : {error}",
   "Some of its data was not upgraded yet and will be tried again when the app opens: {plugins}": "Une partie de ses données n'a pas encore été mise à niveau et sera retentée à l'ouverture de l'app : {plugins}",
+  "Choose which models appear in the model pickers, in the agent and in every app.": "Choisissez les modèles proposés dans les sélecteurs de modèle, dans l’agent et dans chaque app.",
+  "Search models…": "Rechercher des modèles…",
+  "Nothing is chosen, so every model is shown. Tick the models you use, and only those appear in the pickers.": "Rien n’est choisi, donc tous les modèles sont affichés. Cochez ceux que vous utilisez : seuls ceux-là apparaîtront dans les sélecteurs.",
+  "{shown} of {total} models shown": "{shown} modèles affichés sur {total}",
+  "Show every model": "Afficher tous les modèles",
+  "All": "Tous",
+  "None": "Aucun",
+  "No models match.": "Aucun modèle ne correspond.",
+  "No models yet. Add an API connection first.": "Aucun modèle pour l’instant. Ajoutez d’abord une connexion API.",
 }
 
 export default dict

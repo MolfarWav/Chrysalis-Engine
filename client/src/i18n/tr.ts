@@ -431,6 +431,15 @@ const dict = {
   "These apps say they need a different version of Chrysalis and may stop working after the update: {apps}": "Bu uygulamalar farklı bir Chrysalis sürümüne ihtiyaç duyduklarını belirtiyor ve güncellemeden sonra çalışmayabilir: {apps}",
   "The last update did not work: {error}": "Son güncelleme başarısız oldu: {error}",
   "Some of its data was not upgraded yet and will be tried again when the app opens: {plugins}": "Verilerinin bir kısmı henüz yükseltilmedi, uygulama açıldığında yeniden denenecek: {plugins}",
+  "Choose which models appear in the model pickers, in the agent and in every app.": "Ajanda ve her uygulamada model seçicilerde hangi modellerin görüneceğini seç.",
+  "Search models…": "Model ara…",
+  "Nothing is chosen, so every model is shown. Tick the models you use, and only those appear in the pickers.": "Hiçbir şey seçilmedi, bu yüzden tüm modeller gösteriliyor. Kullandığın modelleri işaretle, seçicilerde yalnızca onlar görünsün.",
+  "{shown} of {total} models shown": "{total} modelden {shown} tanesi gösteriliyor",
+  "Show every model": "Tüm modelleri göster",
+  "All": "Tümü",
+  "None": "Hiçbiri",
+  "No models match.": "Eşleşen model yok.",
+  "No models yet. Add an API connection first.": "Henüz model yok. Önce bir API bağlantısı ekle.",
 }
 
 export default dict

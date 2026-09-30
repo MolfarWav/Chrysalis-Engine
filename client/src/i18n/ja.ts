@@ -431,6 +431,15 @@ const dict = {
   "These apps say they need a different version of Chrysalis and may stop working after the update: {apps}": "次のアプリは別のバージョンの Chrysalis を必要としており、アップデート後に動作しなくなる可能性があります: {apps}",
   "The last update did not work: {error}": "前回のアップデートは失敗しました: {error}",
   "Some of its data was not upgraded yet and will be tried again when the app opens: {plugins}": "一部のデータはまだアップグレードされていません。アプリを開いたときに再試行します: {plugins}",
+  "Choose which models appear in the model pickers, in the agent and in every app.": "エージェントと各アプリのモデル選択に表示するモデルを選びます。",
+  "Search models…": "モデルを検索…",
+  "Nothing is chosen, so every model is shown. Tick the models you use, and only those appear in the pickers.": "何も選ばれていないため、すべてのモデルを表示中です。使うモデルにチェックを入れると、それだけが選択肢に表示されます。",
+  "{shown} of {total} models shown": "{total} 件中 {shown} 件のモデルを表示",
+  "Show every model": "すべてのモデルを表示",
+  "All": "すべて",
+  "None": "なし",
+  "No models match.": "一致するモデルはありません。",
+  "No models yet. Add an API connection first.": "モデルがまだありません。先に API 接続を追加してください。",
 }
 
 export default dict

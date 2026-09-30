@@ -229,6 +229,9 @@ describe("exfiltration ways out of an app page", () => {
     expect(host.allowedRequest("roleplay", "GET", "/v1/plugins")).toBe(true);
     // the model catalog itself is not a write target
     expect(host.allowedRequest("roleplay", "POST", "/v1/models")).toBe(false);
+    // which models the pickers offer is the user's call in Settings, even for a shipped app
+    expect(host.allowedRequest("roleplay", "PUT", "/v1/models/shown")).toBe(false);
+    expect(host.allowedRequest("roleplay", "PUT", "/v1/models/shown", true)).toBe(false);
     // engine-wide settings writes (context, pricing, embeddings) belong to
     // the shipped app only — an imported app cannot silently retune them
     const settingsWrites: Array<[string, string]> = [

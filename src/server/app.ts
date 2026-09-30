@@ -1209,7 +1209,37 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     return c.json({ output: res.stdout + (res.stderr ? (res.stdout ? "\n" : "") + res.stderr : ""), exitCode: res.exitCode ?? -1, timedOut: res.timedOut });
   });
 
-  app.get("/v1/models", async (c) => c.json({ models: await c.get("models").available() }));
+  // Every picker (the agent's, every app's) lists the models the user switched
+  // on in Settings > Models; ?all=1 is the full list for that page and the
+  // picker's "show hidden", each model marked with whether it is shown.
+  app.get("/v1/models", async (c) => {
+    const svc = c.get("models");
+    const models = await svc.available();
+    const shown = new Set(svc.shownModels());
+    // switched-on models that all went away (their connection was removed)
+    // must not leave every picker empty: that counts as nothing chosen
+    const filtered = models.some((m) => shown.has(`${m.provider}/${m.modelId}`));
+    const isShown = (m: { provider: string; modelId: string }) => !filtered || shown.has(`${m.provider}/${m.modelId}`);
+    if (c.req.query("all") === "1") return c.json({ models: models.map((m) => ({ ...m, shown: isShown(m) })), filtered });
+    return c.json({ models: models.filter(isShown) });
+  });
+
+  // switch models on or off in the pickers; the shell's Settings and the
+  // agent's picker only — apps read the list, they do not curate it
+  app.put("/v1/models/shown", async (c) => {
+    const u = c.get("user");
+    const p = c.get("paths");
+    const body = await c.req.json<{ refs?: unknown; shown?: unknown }>().catch(() => ({}) as { refs?: unknown; shown?: unknown });
+    const refs = body.refs;
+    if (!Array.isArray(refs) || refs.length > 5000 || !refs.every((r) => typeof r === "string" && r.includes("/") && r.length <= 400)) {
+      return c.json({ error: 'refs must be a list of "<provider>/<model>"' }, 400);
+    }
+    if (typeof body.shown !== "boolean") return c.json({ error: "shown must be true or false" }, 400);
+    const shown = c.get("models").setShown(refs as string[], body.shown);
+    await git.commitAll(p.root, u.username, `models: ${body.shown ? "show" : "hide"} ${refs.length === 1 ? refs[0] : `${refs.length} models`}`).catch(() => undefined);
+    bus.emit(u.username, "connections_changed", { id: "models-shown" });
+    return c.json({ ok: true, shown });
+  });
 
   // the instruct formats a text completion connection can write a chat in
   app.get("/v1/models/prompt-formats", (c) => c.json({ formats: PROMPT_FORMATS }));

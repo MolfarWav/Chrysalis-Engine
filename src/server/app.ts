@@ -32,6 +32,7 @@ import type { AuthPrompt, Credential, ProviderAuthInteraction } from "@earendil-
 import { curatedProviders, loadCustomProviders, reservedProviderIds } from "../providers/custom.js";
 import { UserAgent, instructionDocsStamp, listSessions, renameSession, archiveSession, sessionDir, sessionProject, isReasoningLevel, type ReasoningLevel } from "../agent/agent.js";
 import * as projects from "../agent/projects.js";
+import * as profileBackup from "../profile-backup.js";
 import { summarizeSession } from "../agent/compact.js";
 import * as agentMemory from "../agent/memory.js";
 import { listConnections, createConnection, updateConnection, deleteConnection, validateConnectionInput, validatePromptFormatInput, readConnections, connectionKeyUsable, type ConnectionInfo } from "../connections.js";
@@ -52,7 +53,7 @@ import { SANDBOX_GIT_HOST } from "../sandbox/browser/prelude.js";
 import { GitCliError, runGitArgs } from "../agent/git-cli.js";
 import { log } from "../logger.js";
 import type { EventBus } from "./ws.js";
-import { ensureLookWatcher } from "./look-watch.js";
+import { ensureLookWatcher, stopLookWatcher } from "./look-watch.js";
 import { assertPublicHost } from "../net-guard.js";
 import { installApp, hasPackages, packagesBusy } from "../apps/packages.js";
 import { appFsOps, checkOutput, leaseHolder, MAX_BATCH_OPS, readBuildStatus, readDevMeta, sourceRev, takeLease, writeClientErrors, writeClientLogs, writeOutput } from "../builder/server.js";
@@ -258,7 +259,8 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
   const EVERYDAY_BODY_BYTES = 128 * 1024 * 1024;
   app.use("*", async (c, next) => {
     const body = c.req.raw.body;
-    if (!body || (c.req.method === "POST" && c.req.path === "/v1/apps/import")) return next();
+    // backups are checked against their own limit by the route
+    if (!body || (c.req.method === "POST" && (c.req.path === "/v1/apps/import" || c.req.path === "/v1/profile/import"))) return next();
     const declared = c.req.header("content-length");
     if (declared !== undefined && !c.req.header("transfer-encoding")) {
       return Number(declared) > EVERYDAY_BODY_BYTES ? c.json({ error: "request body too large" }, 413) : next();
@@ -2596,6 +2598,88 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
       return c.json({ ok: true });
     } catch (e) {
       return memoryError(c, e);
+    }
+  });
+
+  // ---------- the whole profile as one zip (Settings > Backup) ----------
+  // Separate from an app's own backup: this is every file the account has,
+  // agent work included, to move to another computer. Shell-only (not on the
+  // app bridge's allowlist).
+  const profileError = (c: Context, e: unknown) =>
+    e instanceof profileBackup.ProfileError ? c.json({ error: e.message }, e.status) : c.json({ error: (e as Error).message }, 500);
+
+  app.post("/v1/profile/export", async (c) => {
+    const u = c.get("user");
+    const body = await c.req.json<{ password?: unknown }>().catch(() => ({}) as { password?: unknown });
+    const password = typeof body.password === "string" ? body.password : "";
+    if (password && password.length < 8) return c.json({ error: "the password for the keys needs at least 8 characters" }, 400);
+    const avatarFile = users.avatarPath(u.username);
+    try {
+      const zip = await profileBackup.exportProfile(dataDir, u.username, {
+        engine: ENGINE_VERSION,
+        ...(password ? { password } : {}),
+        avatar: avatarFile ? { bytes: fs.readFileSync(avatarFile), ext: path.extname(avatarFile).slice(1) } : null,
+      });
+      c.header("content-type", "application/zip");
+      c.header("content-disposition", `attachment; filename="chrysalis-${u.username}-${new Date().toISOString().slice(0, 10)}.zip"`);
+      c.header("x-content-type-options", "nosniff");
+      return c.body(new Uint8Array(zip));
+    } catch (e) {
+      return profileError(c, e);
+    }
+  });
+
+  // step 1: the zip is unpacked and checked, nothing changes yet
+  app.post("/v1/profile/import", async (c) => {
+    if (Number(c.req.header("content-length") ?? "0") > BACKUP_MAX_BYTES) return c.json({ error: "the file is too large (over 512 MB)" }, 413);
+    try {
+      return c.json(profileBackup.stageProfileImport(dataDir, new Uint8Array(await c.req.arrayBuffer())));
+    } catch (e) {
+      return profileError(c, e);
+    }
+  });
+
+  app.delete("/v1/profile/import/:token", (c) => {
+    try {
+      profileBackup.discardProfileImport(dataDir, c.req.param("token"));
+      return c.json({ ok: true });
+    } catch (e) {
+      return profileError(c, e);
+    }
+  });
+
+  // step 2: replace this account's profile with it (current one zipped first)
+  app.post("/v1/profile/import/:token/confirm", async (c) => {
+    const u = c.get("user");
+    const body = await c.req.json<{ password?: unknown; skipSecrets?: unknown }>().catch(() => ({}) as { password?: unknown; skipSecrets?: unknown });
+    for (const key of activeRuns.keys()) {
+      if (key.startsWith(`${u.username}:`)) return c.json({ error: "the agent is working: stop it before replacing the profile" }, 409);
+    }
+    try {
+      const r = await profileBackup.applyProfileImport(dataDir, u.username, c.req.param("token"), {
+        engine: ENGINE_VERSION,
+        ...(typeof body.password === "string" && body.password ? { password: body.password } : {}),
+        skipSecrets: body.skipSecrets === true,
+        // everything that holds the old workspace open lets go of it
+        beforeSwap: () => {
+          evictAgents(u.username);
+          modelServices.delete(u.username);
+          const mcp = mcpRegistries.get(u.username);
+          mcpRegistries.delete(u.username);
+          void mcp?.dispose().catch(() => undefined);
+          pluginStores.delete(u.username);
+          stopUserSchedules(u.username);
+          stopLookWatcher(u.username);
+          invalidatePluginCache();
+        },
+      });
+      if (r.avatar) users.writeAvatar(u.username, r.avatar.bytes, r.avatar.ext as "png" | "jpg" | "jpeg" | "webp" | "gif");
+      bus.emit(u.username, "profile_replaced", {});
+      bus.emit(u.username, "connections_changed", { id: "profile-import" });
+      log.info(`[profile] ${u.username}: replaced from a backup (previous profile at ${r.safetyBackup})`);
+      return c.json({ ok: true, safetyBackup: r.safetyBackup, secrets: r.secrets });
+    } catch (e) {
+      return profileError(c, e);
     }
   });
 

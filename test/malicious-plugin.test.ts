@@ -194,6 +194,7 @@ describe("exfiltration ways out of an app page", () => {
       "/v1/apps/roleplay/export", "/v1/apps/roleplay/exports",
       "/v1/settings/connections", "/v1/plugins",
       "/v1/projects", "/v1/projects/app:roleplay", "/v1/projects/app:roleplay/files/a.png", "/v1/projects/import",
+      "/v1/profile/export", "/v1/profile/import", "/v1/profile/import/t/confirm",
     ]) {
       expect(host.allowedRequest("roleplay", "POST", path), path).toBe(false);
     }

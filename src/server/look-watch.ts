@@ -149,6 +149,13 @@ export function ensureLookWatcher(username: string, appsDir: string, bus: EventB
   });
 }
 
+/** Stop one account's watcher (its workspace is about to be replaced);
+ *  the next app page served arms a fresh one. */
+export function stopLookWatcher(username: string): void {
+  active.get(username)?.close();
+  active.delete(username);
+}
+
 export function stopLookWatchers(): void {
   for (const w of active.values()) w.close();
   active.clear();

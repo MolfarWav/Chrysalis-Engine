@@ -95,7 +95,7 @@ export async function zipFolder(dir: string, prefix: string, what: string): Prom
 /** A zip entry's path when it is safe to create under a folder; null skips
  *  it (folders, OS clutter, derived dirs); throws for a path that tries to
  *  leave. */
-function entryPath(name: string): string | null {
+function entryPath(name: string, skipDirs: ReadonlySet<string> = SKIPPED_DIRS): string | null {
   const normalized = name.replace(/\\/g, "/");
   if (normalized.endsWith("/")) return null;
   if (normalized.includes("\0") || normalized.startsWith("/") || /^[a-zA-Z]:/.test(normalized)) {
@@ -103,7 +103,7 @@ function entryPath(name: string): string | null {
   }
   const segs = normalized.split("/");
   if (segs.some((s) => s === "" || s === "." || s === "..")) throw new BackupError(`the zip has an entry outside its own folder: ${name}`);
-  if (segs[0] === "__MACOSX" || segs.at(-1) === ".DS_Store" || segs.some((s) => SKIPPED_DIRS.has(s))) return null;
+  if (segs[0] === "__MACOSX" || segs.at(-1) === ".DS_Store" || segs.some((s) => skipDirs.has(s))) return null;
   return segs.join("/");
 }
 
@@ -116,8 +116,9 @@ export function extractBackup(zip: Uint8Array, dest: string): { root: string; me
 }
 
 /** Unpack a zip into `dest` with every check a backup gets (entry names,
- *  counted sizes, plain files only). Returns the real path of `dest`. */
-export function extractZip(zip: Uint8Array, dest: string): string {
+ *  counted sizes, plain files only). Returns the real path of `dest`.
+ *  `skipDirs`: folder names never unpacked (a profile backup keeps .git). */
+export function extractZip(zip: Uint8Array, dest: string, skipDirs: ReadonlySet<string> = SKIPPED_DIRS): string {
   if (zip.byteLength > BACKUP_MAX_BYTES) throw new BackupError("the file is too large (over 512 MB)", 413);
   if (zip[0] !== 0x50 || zip[1] !== 0x4b) throw new BackupError("not a zip file", 400);
   fs.mkdirSync(dest, { recursive: true });
@@ -131,7 +132,7 @@ export function extractZip(zip: Uint8Array, dest: string): string {
     if (failure) return;
     try {
       if (++entries > MAX_ENTRIES) throw new BackupError("the zip has too many files");
-      const rel = entryPath(file.name);
+      const rel = entryPath(file.name, skipDirs);
       if (!rel) return;
       const target = path.join(destRoot, ...rel.split("/"));
       const chunks: Uint8Array[] = [];

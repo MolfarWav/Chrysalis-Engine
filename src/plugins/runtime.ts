@@ -24,7 +24,8 @@
  *     handleRoute(req, host)  → { status, json | text }   (permission: routes)
  *     TOOLS + handleTool(name, args, host)                (permission: tools)
  *     uiPanel(ctx, host)      → a declarative settings panel
- *     onTick(host)                                (when schedule is set)
+ *     onTick(ctx, host)       (when schedule is set; ctx is { pluginId }, so
+ *                               a one-argument onTick(host) gets ctx, not host)
  *     onAppUpdate({ from, to }, host) → the app's own data upgrades, run
  *                               once after its code moved between versions
  */

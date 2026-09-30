@@ -11,6 +11,9 @@
   panel `client-agent/src/MemoryPanel.tsx`, tests `test/agent-memory.test.ts`.
   Decisions: project memory attached automatically; memory/skills written only via confirmed cards;
   skills both global and per app.
+- Upstream staging merged in (2026-09-30): @ mentions, user commands (commands/, overlaps our skills — reconcile later), CLI.
+- Upstream PR prepared: branch `claude/upstream-context-fixes` (context fixes + onTick docs only, on their staging).
+  The user opens it from the prefilled link; body in `.fork/upstream-pr-body.md`.
 - Next (not engine, in the user's Roleplay workspace):
   1. Archivarius: `onTick(_ctx, host)` fix, then verify vault-chats appears.
   2. Roleplay `recallMemories`: Ukrainian stop words, stem-prefix matching, typographic apostrophe (’).

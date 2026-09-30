@@ -24,10 +24,12 @@ import {
   adminUsersApi,
   oauthApi,
   avatarApi,
+  profileApi,
   speechApi,
   listPromptFormats,
   modelsApi,
   type PickerModel,
+  type ProfileSummary,
   type PromptFormat,
   type SpeechEndpoint,
   type EngineConnection,
@@ -36,7 +38,7 @@ import {
 } from "./api"
 import type { Me } from "./types"
 import { ServerTab } from "./server-settings"
-import { LOCALES, setLocale, tr, useLocale, type Locale } from "./i18n/index"
+import { LOCALES, getLocale, setLocale, tr, useLocale, type Locale } from "./i18n/index"
 
 export const inputClass =
   "min-w-0 flex-1 rounded-lg border border-line bg-panel px-3 py-1.5 text-13 text-ink outline-none placeholder:text-ink-faint focus:border-line-focus"
@@ -77,12 +79,13 @@ const LOCAL_SERVERS: LocalPick[] = [
 type OAuthPick = { id: string; providerId: string; label: string; kind: "builtin"; baseUrl: null; apiKeyAuth: false; hasKey: false; authKind: "oauth" | "credentials"; needsGateway?: boolean }
 type ProviderPick = EngineProvider | CustomPick | OAuthPick | LocalPick
 
-export type TabValue = "general" | "api" | "models" | "speech" | "agent" | "mcp" | "developer" | "server" | "users"
+export type TabValue = "general" | "backup" | "api" | "models" | "speech" | "agent" | "mcp" | "developer" | "server" | "users"
 
 export function SettingsBody(props: { onClose: () => void; me: Me; initialTab?: TabValue | null; onLogout: () => void }) {
   const [tab, setTab] = useState<TabValue>(props.initialTab ?? "api")
   const tabs: Array<{ value: TabValue; label: string; icon: ReactNode }> = [
     { value: "general", label: tr("General"), icon: <IconSmall name="outline-sliders" /> },
+    { value: "backup", label: tr("Backup"), icon: <Icon name="download" /> },
     { value: "api", label: tr("API connections"), icon: <Icon name="cloud-upload" /> },
     { value: "models", label: tr("Models"), icon: <Icon name="providers" /> },
     { value: "speech", label: tr("Speech"), icon: <Icon name="speaker" /> },
@@ -111,6 +114,7 @@ export function SettingsBody(props: { onClose: () => void; me: Me; initialTab?: 
   const paneFor = (v: TabValue) => (
     <>
       {v === "general" && <GeneralTab me={props.me} onLogout={props.onLogout} />}
+      {v === "backup" && <BackupTab />}
       {v === "api" && <ApiTab />}
       {v === "models" && <ModelsTab />}
       {v === "speech" && <SpeechTab />}
@@ -148,6 +152,9 @@ export function SettingsBody(props: { onClose: () => void; me: Me; initialTab?: 
           </Tabs.List>
           <Tabs.Content value="general" className="no-scrollbar">
             <GeneralTab me={props.me} onLogout={props.onLogout} />
+          </Tabs.Content>
+          <Tabs.Content value="backup" className="no-scrollbar">
+            <BackupTab />
           </Tabs.Content>
           <Tabs.Content value="api" className="no-scrollbar">
             <ApiTab />
@@ -442,6 +449,252 @@ function GeneralTab(props: { me: Me; onLogout: () => void }) {
       <div className="flex flex-col gap-6 pb-4">
         <LanguageSection />
         <AccountSection me={props.me} onLogout={props.onLogout} />
+      </div>
+    </Pane>
+  )
+}
+
+// -------------------------------------------------------------------- backup
+
+/** Bytes as KB / MB / GB for the import summary. */
+function humanSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} ${tr("KB")}`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} ${tr("MB")}`
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} ${tr("GB")}`
+}
+
+function dateLabel(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(getLocale(), { dateStyle: "medium", timeStyle: "short" })
+}
+
+/** A password box; `onToggle` adds the show / hide button. */
+function PasswordInput(props: {
+  value: string
+  onChange: (v: string) => void
+  placeholder: string
+  show: boolean
+  onToggle?: () => void
+  disabled?: boolean
+  autoComplete?: string
+}) {
+  return (
+    <div className="relative max-w-[320px]">
+      <input
+        className={cn(inputClass, "w-full", { "pr-16": !!props.onToggle }, "disabled:opacity-50")}
+        type={props.show ? "text" : "password"}
+        placeholder={props.placeholder}
+        autoComplete={props.autoComplete ?? "new-password"}
+        disabled={props.disabled}
+        value={props.value}
+        onChange={(e) => props.onChange(e.currentTarget.value)}
+      />
+      {props.onToggle ? <Button variant="ghost-muted" size="small" className="absolute right-1 top-1/2 -translate-y-1/2" onClick={props.onToggle}>
+          {props.show ? tr("Hide") : tr("Show")}
+        </Button> : null}
+    </div>
+  )
+}
+
+/** Download the whole profile as one zip, optionally with the keys sealed in. */
+function ProfileExportSection() {
+  const [password, setPassword] = useState("")
+  const [confirm, setConfirm] = useState("")
+  const [show, setShow] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState("")
+  const [msg, setMsg] = useState("")
+
+  const doExport = async () => {
+    setErr("")
+    setMsg("")
+    if (password && password.length < 8) return setErr(tr("The password needs at least 8 characters."))
+    if (password !== confirm) return setErr(tr("Passwords do not match"))
+    setBusy(true)
+    try {
+      await profileApi.export(password || undefined)
+      setMsg(tr("Backup downloaded."))
+    } catch (e: any) {
+      setErr(e.message ?? String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="text-13 font-medium text-ink">{tr("Export")}</h3>
+      <PasswordInput value={password} onChange={setPassword} placeholder={tr("Password for API keys")} show={show} onToggle={() => setShow(!show)} disabled={busy} />
+      {password ? <PasswordInput value={confirm} onChange={setConfirm} placeholder={tr("Confirm password")} show={show} disabled={busy} /> : null}
+      <p className="text-12 leading-4 text-ink-muted">
+        {tr("With a password, your API keys and MCP settings are included, encrypted. You will need this password to restore them. Without one, the backup has no keys, and you enter them again on the new computer.")}
+      </p>
+      <div>
+        <Button variant="neutral" size="normal" className="gap-2" disabled={busy} onClick={() => void doExport()}>
+          <IconSmall name="download" />
+          {busy ? tr("Preparing…") : tr("Export profile")}
+        </Button>
+      </div>
+      {err ? <div className="text-12 text-danger">{err}</div> : null}
+      {msg ? <div className="text-12 text-success">{msg}</div> : null}
+    </div>
+  )
+}
+
+/** Replace this profile with a backup: pick the file, review what is in it,
+ *  then confirm. Every open view is stale afterwards, so the page reloads. */
+function ProfileImportSection() {
+  const [summary, setSummary] = useState<ProfileSummary | null>(null)
+  const [password, setPassword] = useState("")
+  const [show, setShow] = useState(false)
+  const [skipSecrets, setSkipSecrets] = useState(false)
+  const [busy, setBusy] = useState<"" | "reading" | "replacing" | "cancelling">("")
+  const [err, setErr] = useState("")
+  const [msg, setMsg] = useState("")
+  const picker = useRef<HTMLInputElement>(null)
+
+  const reset = () => {
+    setSummary(null)
+    setPassword("")
+    setSkipSecrets(false)
+  }
+
+  const stage = async (file: File | undefined) => {
+    if (!file) return
+    setBusy("reading")
+    setErr("")
+    setMsg("")
+    try {
+      reset()
+      setSummary(await profileApi.stage(file))
+    } catch (e: any) {
+      setErr(e.message ?? String(e))
+    } finally {
+      setBusy("")
+    }
+  }
+
+  const cancel = async () => {
+    if (!summary) return
+    setBusy("cancelling")
+    setErr("")
+    try {
+      await profileApi.discard(summary.token)
+    } catch {
+      // already gone or expired: nothing is left to discard
+    }
+    reset()
+    setBusy("")
+  }
+
+  const replace = async () => {
+    if (!summary) return
+    setBusy("replacing")
+    setErr("")
+    try {
+      const r = await profileApi.confirm(summary.token, {
+        ...(summary.secrets && !skipSecrets && password ? { password } : {}),
+        ...(skipSecrets ? { skipSecrets: true } : {}),
+      })
+      setMsg(tr("Profile replaced. Your previous profile is saved at {path}. Reloading…", { path: r.safetyBackup }))
+      reset()
+      setTimeout(() => location.reload(), 1500)
+    } catch (e: any) {
+      setErr(e.message ?? String(e))
+      // an expired import cannot be retried: choose the file again
+      if (e.status === 404) reset()
+      setBusy("")
+    }
+  }
+
+  const rows: Array<[string, string]> = summary
+    ? [
+        [tr("From account"), summary.username || "?"],
+        [tr("Exported"), summary.exportedAt ? dateLabel(summary.exportedAt) : "?"],
+        [tr("Apps"), summary.apps.length ? summary.apps.join(", ") : tr("No apps")],
+        [tr("Projects"), String(summary.projects)],
+        [tr("Agent chats"), String(summary.agentChats)],
+        [tr("Files"), `${summary.files} · ${humanSize(summary.bytes)}`],
+      ]
+    : []
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-line pt-4">
+      <h3 className="text-13 font-medium text-ink">{tr("Import")}</h3>
+      {!summary ? <>
+          <p className="text-12 leading-4 text-ink-muted">{tr("Choose a profile backup (.zip). You see what is in it before anything changes.")}</p>
+          <div>
+            <Button variant="neutral" size="normal" disabled={busy !== "" || !!msg} onClick={() => picker.current?.click()}>
+              {busy === "reading" ? tr("Reading the file…") : tr("Import profile…")}
+            </Button>
+            <input
+              ref={picker}
+              type="file"
+              accept=".zip,application/zip"
+              className="hidden"
+              onChange={(e) => {
+                void stage(e.currentTarget.files?.[0])
+                e.currentTarget.value = ""
+              }}
+            />
+          </div>
+        </> : <div className="flex flex-col gap-3 rounded-lg border border-line p-3">
+          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-12">
+            {rows.map(([k, v]) => (
+                <div key={k} className="contents">
+                  <dt className="text-ink-muted">{k}</dt>
+                  <dd className="break-words text-ink">{v}</dd>
+                </div>
+              ))}
+          </dl>
+          <p className="rounded-md bg-danger-soft px-2 py-1.5 text-12 leading-4 text-danger">
+            {tr("This replaces everything in your profile. Your current profile is saved first, in the engine's data/backups folder, so you can undo by importing that file.")}
+          </p>
+          {summary.secrets ? <div className="flex flex-col gap-2">
+              <p className="text-12 leading-4 text-ink-muted">{tr("This backup includes API keys and MCP settings. Enter the password it was exported with.")}</p>
+              <PasswordInput
+                value={password}
+                onChange={setPassword}
+                placeholder={tr("Password for the API keys")}
+                show={show}
+                onToggle={() => setShow(!show)}
+                disabled={skipSecrets || busy !== ""}
+              />
+              <label className="flex items-center gap-2 text-12 text-ink">
+                <input
+                  type="checkbox"
+                  className="size-4 shrink-0 accent-[var(--c-contrast)]"
+                  checked={skipSecrets}
+                  disabled={busy !== ""}
+                  onChange={(e) => setSkipSecrets(e.currentTarget.checked)}
+                />
+                {tr("Import without the keys (keep the ones I have now)")}
+              </label>
+            </div> : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="danger" size="normal" disabled={busy !== "" || (summary.secrets && !skipSecrets && !password)} onClick={() => void replace()}>
+              {busy === "replacing" ? tr("Replacing…") : tr("Replace my profile")}
+            </Button>
+            <Button variant="ghost" size="normal" disabled={busy === "replacing" || busy === "cancelling"} onClick={() => void cancel()}>
+              {tr("Cancel")}
+            </Button>
+          </div>
+        </div>}
+      {err ? <div className="text-12 text-danger">{err}</div> : null}
+      {msg ? <div className="break-words text-12 text-success">{msg}</div> : null}
+    </div>
+  )
+}
+
+function BackupTab() {
+  return (
+    <Pane title={tr("Backup")} description={tr("Move your whole profile to another computer.")}>
+      <div className="flex flex-col gap-4 pb-4">
+        <p className="text-12 leading-4 text-ink-muted">
+          {tr("This is a full backup of your profile: apps with their data, the agent's memory, skills, notes, commands, projects and their files, agent chats, pictures and history. Use it to move to another computer. An app's own backup, on the apps screen, holds only that one app, and is enough if you only play.")}
+        </p>
+        <ProfileExportSection />
+        <ProfileImportSection />
       </div>
     </Pane>
   )

@@ -122,7 +122,7 @@ async function reply<T>(res: Response): Promise<T> {
   // stringifying an object directly would surface as "[object Object]"
   const errBody = json?.error
   const errMsg = typeof errBody === "string" ? errBody : (errBody?.message ?? (errBody ? JSON.stringify(errBody) : `HTTP ${res.status}`))
-  if (!res.ok) throw new Error(errMsg)
+  if (!res.ok) throw Object.assign(new Error(errMsg), { status: res.status })
   return json as T
 }
 
@@ -318,6 +318,61 @@ export async function exportApp(id: string): Promise<void> {
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
+/** What a staged profile backup holds, shown before anything is replaced. */
+export interface ProfileSummary {
+  token: string
+  username: string
+  exportedAt: string
+  engine: string
+  secrets: boolean
+  apps: string[]
+  projects: number
+  agentChats: number
+  files: number
+  bytes: number
+}
+
+export const profileApi = {
+  /** Download the whole profile as a zip. A password seals the API keys and
+   *  MCP settings into it; without one they are left out. */
+  async export(password?: string): Promise<void> {
+    let res: Response
+    try {
+      res = await fetch("/v1/profile/export", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(password ? { password } : {}),
+      })
+    } catch {
+      throw new Error(tr("Connection lost. Is the Chrysalis server running?"))
+    }
+    if (!res.ok) await reply(res)
+    const name = /filename="?([^";]+)"?/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "chrysalis-profile.zip"
+    const url = URL.createObjectURL(await res.blob())
+    const a = document.createElement("a")
+    a.href = url
+    a.download = name
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  },
+  /** Step 1: upload the zip raw; the engine unpacks and describes it. */
+  async stage(file: File): Promise<ProfileSummary> {
+    let res: Response
+    try {
+      res = await fetch("/v1/profile/import", { method: "POST", body: file })
+    } catch {
+      throw new Error(tr("Connection lost. Is the Chrysalis server running?"))
+    }
+    return reply(res)
+  },
+  discard: (token: string) => api("DELETE", `/v1/profile/import/${encodeURIComponent(token)}`),
+  /** Step 2: replace this profile with the staged one. */
+  confirm: (token: string, body: { password?: string; skipSecrets?: boolean }) =>
+    api<{ ok: boolean; safetyBackup: string; secrets: boolean }>("POST", `/v1/profile/import/${encodeURIComponent(token)}/confirm`, body),
 }
 
 /** Server settings (config.yaml) as the engine reports them. */

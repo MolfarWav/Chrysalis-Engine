@@ -814,7 +814,7 @@ export interface PluginManifest {
   origin?: "local" | "imported";
   permissions: PluginPermission[];
   hooks?: string[];
-  /** Interval scheduler: calls the plugin's onTick(host) hook. */
+  /** Interval scheduler: calls the plugin's onTick(ctx, host) hook. */
   schedule?: { intervalMs: number };
   /** Cross-plugin hook order (llmRequest): lower runs first, higher runs
    *  later so its patch wins on conflicts. Default 0; ties break by id. */

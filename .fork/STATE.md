@@ -21,7 +21,13 @@
 - Model pickers (2026-09-30, `7916cba`): Settings > Models (grouped by connection, search, All/None). `models-shown.json` in the workspace; `GET /v1/models` serves only chosen models (all when none chosen), `?all=1` the full list. Agent picker: groups, stars, "show N more hidden" on search. With no model set, the engine runs the first shown model.
 - Agent workspace (`fe04ba7`): each run records `spend` (all model calls summed, priced on the session model); composer shows chat total. Skills appear in the `/` menu. Session search, rename, edit and regenerate already existed.
 - Workflow split: engine code (this repo, GitHub) is Claude Code's; the workspace (`data/users/<name>/`: apps, plugins, skills, memory) is the built-in agent's, in its own local git. `/data/` is ignored here, so the two never collide. The workspace has no backup off the user's disk (no remote).
-- Next task, handed off (2026-09-30): projects in the agent page + reasoning switch in the composer. Spec, decisions and mockups: `.fork/handoff/projects/HANDOFF.md`.
+- Branch `claude/hopeful-brown-vb53w4` continues `claude/brave-heisenberg-4l4wdh`.
+- Projects on the agent page (2026-09-30): done. Engine `3512725`, `8dbe6f4`; UI `00d11f1`. Spec: `.fork/handoff/projects/HANDOFF.md`.
+  Engine: `src/agent/projects.ts`, routes `/v1/projects…` (shell-only), tests `test/projects.test.ts`. Apps are projects (`app:<id>`, settings and uploads in `apps/<id>/.project/`); free projects in `projects/<name>/`.
+  Uploads: images + text, 10 MB, spaces become dashes; never in git (`PROJECT_FILES` in `gitBoundaryIgnored` and the agent write denylist). App uploads ride the app backup zip; updates skip `.project/`; free projects export/import as zip.
+  Chat: start record carries `project`; prompt gets a Project section (file LIST only). Model: chat pick > project default > user default. Picks inside a project chat stay per chat (`agent-ui-session-models`).
+  UI: `Sidebar.tsx`, `ProjectPage.tsx`, `ProjectChat.tsx`; reasoning is its own select beside the model picker. Checked in Chromium (dark, light, 390 px).
+  Not done: the workspace AGENTS.md does not mention projects/ (the agent's system prompt does; bumping AGENTS.md would overwrite the user's copy). Project import is capped by the engine's 128 MB body limit.
 - Workspace AGENTS.md: the user's copy carries marker v10 with no digest; engine v12 overwrites it on boot and drops the user's line about docs/ARCHITECTURE.md.
 - Next (not engine, in the user's Roleplay workspace):
   1. Archivarius: `onTick(_ctx, host)` fix, then verify vault-chats appears.

@@ -17,6 +17,7 @@
 - First agent skills (2026-09-30): `.fork/skills/plugin-silent-failure`, `.fork/skills/cyrillic-text-matching` (UA+RU; code tested in QuickJS-ng).
   Install by copying each folder into the workspace `skills/` (from source: `data/users/<name>/skills/`). Seeding them from the engine: later.
   The agent can also add skills itself through `skill_propose`, confirmed by the user.
+- More agent skills (2026-09-30): `.fork/skills/two-phase-llm` (route/hook/tool templates tested on the real plugin runtime), `.fork/skills/finish-change`; app skill `.fork/app-skills/roleplay/edit-large-card` (install into `apps/roleplay/.skills/`; edit script tested on minified, pretty and \u-escaped cards).
 - Model pickers (2026-09-30, `7916cba`): Settings > Models (grouped by connection, search, All/None). `models-shown.json` in the workspace; `GET /v1/models` serves only chosen models (all when none chosen), `?all=1` the full list. Agent picker: groups, stars, "show N more hidden" on search. With no model set, the engine runs the first shown model.
 - Agent workspace (`fe04ba7`): each run records `spend` (all model calls summed, priced on the session model); composer shows chat total. Skills appear in the `/` menu. Session search, rename, edit and regenerate already existed.
 - Workflow split: engine code (this repo, GitHub) is Claude Code's; the workspace (`data/users/<name>/`: apps, plugins, skills, memory) is the built-in agent's, in its own local git. `/data/` is ignored here, so the two never collide. The workspace has no backup off the user's disk (no remote).

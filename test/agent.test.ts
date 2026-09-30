@@ -428,6 +428,46 @@ describe("agent loop + sessions (faux provider)", () => {
     expect(listSessions(p)[0]!.runs).toBe(2);
   }, 30_000);
 
+  it("a run reports what all its model calls used, priced on the session's model", async () => {
+    const users = new UserService(dataDir);
+    users.create("admin", "admin", { password: "admin-pass-1" });
+    users.create("pat", "user", { password: "test-pass-1" });
+    const svc = makeSvc("pat");
+    const handle = fauxProvider({ models: [{ id: "faux-priced", cost: { input: 2, output: 8, cacheRead: 0.5, cacheWrite: 2.5 } }] });
+    const toolCall = fauxAssistantMessage([{ type: "toolCall", id: "tc1", name: "read_file", arguments: { path: "AGENTS.md" } }], { stopReason: "toolUse" });
+    handle.setResponses([toolCall, fauxAssistantMessage("Read it.")]);
+    svc.models.setProvider(handle.provider);
+    const p = userPaths(dataDir, "pat");
+    const agent = await UserAgent.create("pat", svc, p, users, defaultInstanceConfig(), { model: "faux/faux-priced" });
+    const result = await agent.run("read the agents file");
+    const calls = result.transcript.filter((m) => m.role === "assistant") as Array<{ usage: { input: number; output: number; cacheRead: number; cacheWrite: number } }>;
+    expect(calls.length).toBe(2);
+    const spend = result.spend!;
+    // both calls, not just the last one the context ring uses
+    expect(spend.input).toBe(calls[0]!.usage.input + calls[1]!.usage.input);
+    expect(spend.output).toBe(calls[0]!.usage.output + calls[1]!.usage.output);
+    expect(spend.input + spend.cacheWrite).toBeGreaterThan(result.usage!.input);
+    const expected = (spend.input * 2 + spend.output * 8 + spend.cacheRead * 0.5 + spend.cacheWrite * 2.5) / 1_000_000;
+    expect(spend.cost).toBeCloseTo(expected, 12);
+    // the session file keeps it, so a reopened chat can total it
+    const rec = fs.readFileSync(sessionFile(p, agent.sessionId), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as { type: string; spend?: unknown }).find((r) => r.type === "run")!;
+    expect(rec.spend).toEqual(spend);
+  }, 30_000);
+
+  it("a model nobody priced reports its tokens and an unknown cost", async () => {
+    const users = new UserService(dataDir);
+    users.create("admin", "admin", { password: "admin-pass-1" });
+    users.create("kim", "user", { password: "test-pass-1" });
+    const svc = makeSvc("kim");
+    const handle = fauxProvider({ models: [{ id: "faux-free" }] });
+    handle.setResponses([fauxAssistantMessage("Hi.")]);
+    svc.models.setProvider(handle.provider);
+    const agent = await UserAgent.create("kim", svc, userPaths(dataDir, "kim"), users, defaultInstanceConfig(), { model: "faux/faux-free" });
+    const result = await agent.run("hello");
+    expect(result.spend!.output).toBeGreaterThan(0);
+    expect(result.spend!.cost).toBeNull();
+  }, 30_000);
+
   it("several ask_user calls in one batch surface one question at a time", async () => {
     const users = new UserService(dataDir);
     users.create("admin", "admin", { password: "admin-pass-1" });

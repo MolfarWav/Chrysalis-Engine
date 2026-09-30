@@ -44,8 +44,20 @@ export interface EngineRun {
   thinking?: string
   thinkingMs?: number
   usage?: EngineUsage
+  /** every model call of the run, summed; older runs do not carry it */
+  spend?: RunSpend
   title?: string
   summary?: string
+}
+
+/** What one run used across its model calls; cost in USD, null when the
+ *  model has no known price. */
+export interface RunSpend {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  cost: number | null
 }
 
 export interface AgentResponse {

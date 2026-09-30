@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react"
-import { Broom, Plus, TextAa } from "@phosphor-icons/react"
+import { BookOpen, Broom, Plus, TextAa } from "@phosphor-icons/react"
 import { ComposerPrimitive, unstable_useComposerInput, unstable_useSlashCommandAdapter } from "@assistant-ui/react"
 import type { ReactNode } from "react"
-import { agentCommands, type UserCommand } from "./api"
+import { agentCommands, memoryApi, type AgentSkill, type UserCommand } from "./api"
 import { useAgent } from "./store"
 
 /** Icon shown next to a command in the "/" menu. */
 function commandIcon(id: string): ReactNode {
   if (id === "new") return <Plus size={15} />
   if (id === "compact") return <Broom size={15} />
+  if (id.startsWith("skill:")) return <BookOpen size={15} />
   return <TextAa size={15} />
 }
 
@@ -22,11 +23,17 @@ function commandIcon(id: string): ReactNode {
  * folder — a workflow is mostly the prompts someone types again and again, so
  * theirs sit beside ours. Picking one puts its text in the box rather than
  * sending it, because most are a starting point with a detail to add.
+ *
+ * The agent's skills are here too. The agent is meant to load a skill on its
+ * own when a task matches, and a weaker model often does not; picking one
+ * writes the request to load it into the box, ahead of the task.
  */
 export function SlashCommands(): ReactNode {
   const [mine, setMine] = useState<UserCommand[]>([])
+  const [skills, setSkills] = useState<AgentSkill[]>([])
   useEffect(() => {
     void agentCommands().then(setMine).catch(() => undefined)
+    void memoryApi.get().then((m) => setSkills(m.skills)).catch(() => undefined)
   }, [])
   // the supported bridge to the composer's text — a command fills the box, it
   // does not send, so the usual "…and check X too" can be added first
@@ -63,6 +70,13 @@ export function SlashCommands(): ReactNode {
         label: `/${c.name}`,
         description: c.description || "From commands/",
         execute: () => input.setText(c.body),
+      })),
+      ...skills.map((k) => ({
+        id: `skill:${k.scope}:${k.name}`,
+        label: `/${k.name}`,
+        description: `Skill${k.scope === "global" ? "" : ` (${k.scope})`}: ${k.description}`,
+        execute: () =>
+          input.setText(`Load the skill "${k.name}"${k.scope === "global" ? "" : ` (scope ${k.scope})`} with skill_load, follow it, and do this: `),
       })),
     ],
   })

@@ -47,6 +47,8 @@ export interface AgentRunResult {
   thinkingMs?: number;
   /** Token usage of the final assistant message (for context display). */
   usage?: { input: number; output: number; cacheRead: number };
+  /** Every model call of the run, summed and priced. */
+  spend?: RunSpend;
   /** Context window of the resolved model (auto-compact thresholding). */
   contextWindow?: number;
   /** Set when the run was aborted mid-flight (partial output is persisted). */
@@ -92,6 +94,18 @@ interface SessionRunRecord {
   thinking?: string;
   thinkingMs?: number;
   usage?: { input: number; output: number; cacheRead: number };
+  /** Every model call the run made, summed (usage above is only the last). */
+  spend?: RunSpend;
+}
+
+/** Tokens a whole run used across its model calls, and what they cost in
+ *  USD; cost is null when the model has no known price. */
+export interface RunSpend {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost: number | null;
 }
 
 /**
@@ -251,6 +265,7 @@ export class UserAgent {
     readonly sessionId: string,
     private sFile: string,
     private budget: { force: boolean },
+    private svc: Pick<UserModelService, "costOf">,
   ) {}
 
   /** Async factory: model resolution requires provider auth state. */
@@ -375,7 +390,7 @@ export class UserAgent {
         return svc.streamFn(m, c, maxTokens !== undefined ? { ...o, maxTokens } : o, sessionId);
       },
     });
-    return new UserAgent(agent, sessionId, sFile, budget);
+    return new UserAgent(agent, sessionId, sFile, budget, svc);
   }
 
   /** The model this session runs on, for one-shot calls made on its behalf. */
@@ -564,6 +579,7 @@ export class UserAgent {
     const toolTrace = turns.flatMap((t) => t.tools);
     const usageRaw = (finalAssistant as { usage?: { input: number; output: number; cacheRead: number } } | undefined)?.usage;
     const usage = usageRaw ? { input: usageRaw.input, output: usageRaw.output, cacheRead: usageRaw.cacheRead } : undefined;
+    const spend = this.spendOf(fresh);
     const thinkingMs = thinkingStart ? (thinkingEnd || Date.now()) - thinkingStart : undefined;
     const stop = (finalAssistant as { stopReason?: string } | undefined)?.stopReason;
     const errorMessage = (finalAssistant as { errorMessage?: string } | undefined)?.errorMessage;
@@ -579,7 +595,7 @@ export class UserAgent {
     // visible failures only need the reason; this makes an empty settle
     // (stop/length/aborted) diagnosable from the engine log
     if (!text) log.warn(`[agent:${this.sessionId}] run settled with no reply: stop=${stop ?? "none"} out=${(finalAssistant as { usage?: { output?: number } } | undefined)?.usage?.output ?? "?"}`);
-    this.persistRun(userMessage, text, toolTrace, usage, thinkingText, thinkingMs, turns, opts.imageUrls);
+    this.persistRun(userMessage, text, toolTrace, usage, thinkingText, thinkingMs, turns, opts.imageUrls, spend);
     const resolvedModel = (this.agent.state as { model?: { contextWindow?: number } }).model;
     return {
       finalText: text || emptyNote || "",
@@ -589,6 +605,7 @@ export class UserAgent {
       ...(thinkingText ? { thinking: thinkingText } : {}),
       ...(thinkingMs !== undefined ? { thinkingMs } : {}),
       ...(usage ? { usage } : {}),
+      ...(spend ? { spend } : {}),
       ...(resolvedModel?.contextWindow ? { contextWindow: resolvedModel.contextWindow } : {}),
       ...(stop === "aborted" ? { stopped: true } : {}),
       ...(error ? { error } : {}),
@@ -610,6 +627,23 @@ export class UserAgent {
     }
   }
 
+  /** What every model call in a run used, summed, and priced on the
+   *  session's model; undefined when no call reported usage. */
+  private spendOf(fresh: readonly unknown[]): RunSpend | undefined {
+    const sum = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    let calls = 0;
+    for (const m of fresh as { role?: string; usage?: Partial<typeof sum> }[]) {
+      if (m.role !== "assistant" || !m.usage) continue;
+      calls++;
+      sum.input += m.usage.input ?? 0;
+      sum.output += m.usage.output ?? 0;
+      sum.cacheRead += m.usage.cacheRead ?? 0;
+      sum.cacheWrite += m.usage.cacheWrite ?? 0;
+    }
+    if (!calls) return undefined;
+    return { ...sum, cost: this.svc.costOf(this.agent.state.model, sum) };
+  }
+
   private persistRun(
     userMessage: string,
     finalText: string,
@@ -619,6 +653,7 @@ export class UserAgent {
     thinkingMs: number | undefined,
     turns: AgentRunTurn[],
     imageUrls?: string[],
+    spend?: RunSpend,
   ): void {
     try {
       fs.mkdirSync(path.dirname(this.sFile), { recursive: true });
@@ -655,6 +690,7 @@ export class UserAgent {
         ...(thinking ? { thinking } : {}),
         ...(thinkingMs !== undefined ? { thinkingMs } : {}),
         ...(usage ? { usage } : {}),
+        ...(spend ? { spend } : {}),
       };
       fs.appendFileSync(this.sFile, JSON.stringify(rec) + "\n", "utf8");
     } catch (e) {

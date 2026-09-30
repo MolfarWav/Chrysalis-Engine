@@ -424,6 +424,12 @@ export class UserModelService {
     return this.pricingOverrides()[`${m.provider}/${m.id}`] ?? normalizePricing(m.cost);
   }
 
+  /** Spend in USD for token counts on a model, or null when nobody knows
+   *  what it costs (no user price, no catalog price). */
+  costOf(m: { provider: string; id: string; cost?: unknown }, usage: { input: number; output: number; cacheRead: number; cacheWrite: number }): number | null {
+    return this.priceUsage(m, usage);
+  }
+
   /** Spend for one generation, or null when the model has no known rates. */
   private priceUsage(m: { provider: string; id: string; cost?: unknown }, usage: { input: number; output: number; cacheRead: number; cacheWrite: number }): number | null {
     const p = this.pricingFor(m);

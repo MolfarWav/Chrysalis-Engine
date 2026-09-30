@@ -336,7 +336,8 @@ const ComposerContextRing: FC = () => {
   const model = useAgentStore((s) => s.model)
   const models = useAgentStore((s) => s.models)
   if (!usage) return null
-  const window = models.find((m) => `${m.provider}/${m.modelId}` === model)?.contextWindow
+  // no model picked: the engine ran the first shown one
+  const window = (model ? models.find((m) => `${m.provider}/${m.modelId}` === model) : models.find((m) => m.shown))?.contextWindow
   if (!window) return null
   return (
     <ContextDisplay.Ring
@@ -349,6 +350,30 @@ const ComposerContextRing: FC = () => {
       }}
       side="top"
     />
+  )
+};
+
+const compactTokens = (n: number): string =>
+  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+const usd = (n: number): string => `$${n < 0.01 ? n.toFixed(4) : n < 1 ? n.toFixed(3) : n.toFixed(2)}`;
+
+/** What this chat has cost so far: tokens over every model call of every run,
+ *  and their price where the model has one. Tool-heavy runs make many calls,
+ *  so this is usually far more than the context ring's last-call figure. */
+const ComposerSpend: FC = () => {
+  const spend = useAgentStore((s) => s.spend)
+  if (!spend) return null
+  const priced = spend.cost > 0
+  const label = `${compactTokens(spend.tokens)} tok${priced ? ` · ${spend.unpriced ? "≥" : ""}${usd(spend.cost)}` : ""}`
+  const title = !priced
+    ? `This chat used ${spend.tokens.toLocaleString()} tokens. Its model has no known price: set one in Settings to see the cost.`
+    : spend.unpriced
+      ? `This chat used ${spend.tokens.toLocaleString()} tokens. Some runs have no known price, so the cost is at least ${usd(spend.cost)}.`
+      : `This chat used ${spend.tokens.toLocaleString()} tokens, costing ${usd(spend.cost)}.`
+  return (
+    <span className="text-muted-foreground hidden text-xs tabular-nums whitespace-nowrap sm:inline" title={title}>
+      {label}
+    </span>
   )
 };
 
@@ -428,6 +453,7 @@ const ComposerAction: FC = () => {
         <ComposerSettings />
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
+        <ComposerSpend />
         <ComposerContextRing />
         <ContextActions />
         <AuiIf condition={(s) => s.thread.capabilities.dictation}>

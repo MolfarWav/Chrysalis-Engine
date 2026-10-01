@@ -5,6 +5,7 @@ import { Folder, SidebarSimple, Star, WifiSlash } from "@phosphor-icons/react"
 import { useMemo, useState, type ReactNode } from "react"
 import { CommandItem } from "@/components/ui/command"
 import { currentProjectId, effectiveModel, effectiveReasoning, useAgent } from "./store"
+import { Inspector } from "./Inspector"
 import { MemoryPanel } from "./MemoryPanel"
 import { cn, shortModelName } from "@/lib/utils"
 
@@ -242,7 +243,8 @@ export function Header(): ReactNode {
       ) : null}
       <span className="min-w-0 truncate text-sm font-medium">{title?.trim() || "New chat"}</span>
       {wsDown ? <span className="text-destructive ml-auto flex shrink-0 items-center gap-1.5 text-xs" role="status"><WifiSlash size={14} />Reconnecting</span> : null}
-      <div className={wsDown ? "shrink-0" : "ml-auto shrink-0"}>
+      <div className={cn("flex shrink-0 items-center", !wsDown && "ml-auto")}>
+        <Inspector />
         <MemoryPanel />
       </div>
     </header>

@@ -267,6 +267,62 @@ export const memoryApi = {
     api<{ ok: boolean }>("DELETE", `/v1/agent/skills/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`),
 }
 
+/** One request a model received, as the engine's prompt inspector keeps it
+ *  (in engine memory only; a restart clears the list). */
+export interface InspectorMessage {
+  /** "user" | "assistant" | "toolResult" | "prompt" */
+  role: string
+  text: string
+  tokens: number
+  /** tool calls an assistant message made */
+  toolCalls?: string[]
+  /** the tool a result answers */
+  toolName?: string
+  truncated?: boolean
+}
+
+export interface InspectorUsage {
+  input?: number
+  output?: number
+  cacheRead?: number
+  cacheWrite?: number
+  cost?: number
+}
+
+export interface InspectorSummary {
+  id: string
+  at: number
+  /** "agent", "app:roleplay/engine", … */
+  source: string
+  sessionId?: string
+  /** "provider/id" */
+  model: string
+  contextWindow?: number
+  tools: { names: string[]; tokens: number }
+  /** estimated input tokens: system + messages + tool definitions */
+  estimate: number
+  ms?: number
+  usage?: InspectorUsage
+  stopReason?: string
+  error?: string
+  pending?: boolean
+  messageCount: number
+  preview: string
+}
+
+export interface InspectorEntry extends Omit<InspectorSummary, "messageCount" | "preview"> {
+  params: Record<string, unknown>
+  system: { text: string; tokens: number; truncated?: boolean }
+  messages: InspectorMessage[]
+  output?: { text: string; reasoning?: string; toolCalls?: string[] }
+}
+
+export const inspectorApi = {
+  list: () => api<{ entries: InspectorSummary[] }>("GET", "/v1/inspector").then((r) => r.entries ?? []),
+  get: (id: string) => api<InspectorEntry>("GET", `/v1/inspector/${encodeURIComponent(id)}`),
+  clear: () => api<{ ok: boolean }>("DELETE", "/v1/inspector"),
+}
+
 export interface ProjectSummary {
   /** "app:<id>" | "project:<name>" */
   id: string

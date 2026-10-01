@@ -115,7 +115,8 @@ export async function restoreCheckpoint(root: string, username: string, id: stri
   if (!cp) throw new Error(`no checkpoint "${id}"`);
   assertApp(root, cp.app);
   // the current state, pending changes included, becomes its own checkpoint
-  const before = await createCheckpoint(root, username, cp.app, `before restoring "${cp.label}"`, true);
+  // a flat label: quoting the restored one nests on every restore of a restore
+  const before = await createCheckpoint(root, username, cp.app, `before a restore, ${when(Date.now())}`, true);
   const head = await git.headOid(root);
   if (!head) throw new Error("the workspace has no commits yet");
   const [then, now] = await Promise.all([codeAt(root, cp.oid, cp.app), codeAt(root, head, cp.app)]);

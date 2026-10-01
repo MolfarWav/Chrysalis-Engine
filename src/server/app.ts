@@ -30,6 +30,7 @@ import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import { radiusProvider } from "@earendil-works/pi-ai/providers/radius";
 import type { AuthPrompt, Credential, ProviderAuthInteraction } from "@earendil-works/pi-ai";
 import { curatedProviders, loadCustomProviders, reservedProviderIds } from "../providers/custom.js";
+import { isSmallModelMode } from "../agent/small-window.js";
 import { UserAgent, instructionDocsStamp, listSessions, renameSession, archiveSession, moveSession, sessionDir, sessionProject, isReasoningLevel, type ReasoningLevel } from "../agent/agent.js";
 import { normalizeAskOption } from "../agent/tools.js";
 import * as projects from "../agent/projects.js";
@@ -1672,15 +1673,19 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
           : typeof settings.autoCompact === "number"
             ? settings.autoCompact
             : true,
+      smallModelMode: isSmallModelMode(settings.smallModelMode) ? settings.smallModelMode : "auto",
     });
   });
 
   app.put("/v1/settings", async (c) => {
     const u = c.get("user");
     const p = c.get("paths");
-    const body = await c.req.json<{ launchDefault?: string | null; storeSeen?: string; model?: string | null; reasoning?: string | null; autoCompact?: boolean | number | null }>().catch(() => null) ?? {};
-    if (!("launchDefault" in body) && !("storeSeen" in body) && !("model" in body) && !("reasoning" in body) && !("autoCompact" in body)) {
-      return c.json({ error: "launchDefault, storeSeen, model, reasoning or autoCompact required" }, 400);
+    const body = await c.req.json<{ launchDefault?: string | null; storeSeen?: string; model?: string | null; reasoning?: string | null; autoCompact?: boolean | number | null; smallModelMode?: unknown }>().catch(() => null) ?? {};
+    if (!("launchDefault" in body) && !("storeSeen" in body) && !("model" in body) && !("reasoning" in body) && !("autoCompact" in body) && !("smallModelMode" in body)) {
+      return c.json({ error: "launchDefault, storeSeen, model, reasoning, autoCompact or smallModelMode required" }, 400);
+    }
+    if (body.smallModelMode !== undefined && !isSmallModelMode(body.smallModelMode)) {
+      return c.json({ error: "smallModelMode must be auto, on or off" }, 400);
     }
     if (body.storeSeen !== undefined && !(typeof body.storeSeen === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.storeSeen))) {
       return c.json({ error: "storeSeen must be a date (YYYY-MM-DD)" }, 400);
@@ -1711,6 +1716,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     if (body.model !== undefined) settings.model = body.model;
     if (body.reasoning !== undefined) settings.reasoning = body.reasoning;
     if (body.autoCompact !== undefined) settings.autoCompact = body.autoCompact;
+    if (body.smallModelMode !== undefined) settings.smallModelMode = body.smallModelMode;
     fs.writeFileSync(p.settings, JSON.stringify(settings, null, 2) + "\n");
     const changes: string[] = [];
     if (body.launchDefault !== undefined) changes.push("launch default");
@@ -1718,6 +1724,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     if (body.model !== undefined) changes.push("default model");
     if (body.reasoning !== undefined) changes.push("thinking level");
     if (body.autoCompact !== undefined) changes.push("auto-compact");
+    if (body.smallModelMode !== undefined) changes.push("small-model mode");
     await git.commitAll(p.root, u.username, `settings: ${changes.join(", ")}`).catch(() => undefined);
     evictAgents(u.username); // agents snapshot model + reasoning at creation
     return c.json({ ok: true });

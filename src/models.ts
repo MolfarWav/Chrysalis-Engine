@@ -1250,7 +1250,14 @@ export class UserModelService {
   }
 
   /** streamFn for pi-agent-core Agents (same funnel, same invariant). */
-  streamFn(model: Model<Api>, context: Context, options?: Parameters<MutableModels["streamSimple"]>[2], sessionId?: string) {
+  streamFn(
+    model: Model<Api>,
+    context: Context,
+    options?: Parameters<MutableModels["streamSimple"]>[2],
+    sessionId?: string,
+    /** Shown in the prompt inspector beside the request's own params. */
+    marks?: Record<string, unknown>,
+  ) {
     // Same session contract as generate(): the stable id keys provider prompt
     // caching and, on the OpenCode gateway, the routing/caching headers. The
     // built-in agent passes its session id so a chat's turns stay on one
@@ -1285,6 +1292,7 @@ export class UserModelService {
           ...(opts?.reasoning ? { reasoning: opts.reasoning } : {}),
           ...(opts?.maxTokens ? { maxTokens: opts.maxTokens } : {}),
           ...(opts?.temperature != null ? { temperature: opts.temperature } : {}),
+          ...marks,
         },
         ...(context.systemPrompt ? { systemPrompt: context.systemPrompt } : {}),
         messages: context.messages,

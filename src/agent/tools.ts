@@ -235,14 +235,14 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
     // concurrent calls would overwrite each other's card and hang the batch
     executionMode: "sequential",
     description:
-      "Ask the signed-in user and wait for the answer. Use when requirements are ambiguous, a decision is needed, or before anything destructive. " +
-      "options: quick-pick choices, each a plain string or {label, description, recommended}; description is one short line saying what the choice means. " +
-      "multiSelect: the user may pick several. questions: ask several questions in ONE card (each {question, options, multiSelect}); the answer comes back as one line per question. " +
-      "The user can always type their own answer instead.",
+      "Ask the user and wait for the answer: ambiguous requirements, a decision, or before anything destructive. " +
+      "options: strings or {label, description (one short line), recommended}. multiSelect: several picks allowed. " +
+      "questions: 2-6 questions in ONE card, each {question, options, multiSelect}; question is then a one-line intro and the answer has one line per question. " +
+      "The user can always type their own answer.",
     parameters: Type.Object({
-      question: Type.String({ description: "The question, or a one-line intro when questions is set" }),
-      options: Type.Optional(Type.Array(Type.Union([Type.String(), ASK_OPTION]), { description: "Quick-pick choices: strings, or {label, description, recommended}" })),
-      multiSelect: Type.Optional(Type.Boolean({ description: "Allow picking several options" })),
+      question: Type.String(),
+      options: Type.Optional(Type.Array(Type.Union([Type.String(), ASK_OPTION]))),
+      multiSelect: Type.Optional(Type.Boolean()),
       questions: Type.Optional(
         Type.Array(
           Type.Object({
@@ -250,7 +250,6 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
             options: Type.Optional(Type.Array(Type.Union([Type.String(), ASK_OPTION]))),
             multiSelect: Type.Optional(Type.Boolean()),
           }),
-          { description: "Several questions in one card (2-6), each with its own options" },
         ),
       ),
     }),

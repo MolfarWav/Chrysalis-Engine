@@ -21,6 +21,17 @@ import { log } from "../logger.js";
 import { clampThinkingLevel, isContextOverflow, type AssistantMessage } from "@earendil-works/pi-ai";
 import { clampMaxTokens, fitContext, newTrimState } from "./context-budget.js";
 import { appTouched, buildMemoryTools, memoryPromptSection, projectContextFor } from "./memory.js";
+import {
+  SKILL_UNLOCKS,
+  availableGroups,
+  buildToolsEnable,
+  compactSystemPrompt,
+  groupsFromHistory,
+  isSmallWindow,
+  readSmallModelMode,
+  visibleTools,
+  type ToolGroup,
+} from "./small-window.js";
 import { buildCheckpointTool, changedSince, createCheckpoint, type Checkpoint } from "./checkpoints.js";
 import { resetAllowed } from "./protect.js";
 import { readSandboxSettings } from "../sandbox/network.js";
@@ -426,6 +437,9 @@ export class UserAgent {
     if (opts.mode === "plan") {
       tools = tools.filter((t) => !WRITE_TOOLS.has(t.name) || t.name === "ask_user");
     }
+    // no shell on this instance: its schema would only cost room and invite failing calls
+    const shellOn = !!opts.sandbox && opts.sandbox.config.provider !== "off";
+    if (!shellOn) tools = tools.filter((t) => t.name !== "bash");
 
     // the user's context override is the model's window here too: it decides
     // when the session auto-compacts
@@ -445,6 +459,16 @@ export class UserAgent {
       [...available].sort((x, y) => (x.provider + "/" + x.id).localeCompare(y.provider + "/" + y.id))[0]!;
 
     const messages = loadSessionDialogue(sFile, model);
+    // small-window mode (small-window.ts): one compact prompt, core tools only;
+    // a group shows once the work needs it, from the next step of the run
+    const small = isSmallWindow(readSmallModelMode(paths.settings), model.contextWindow);
+    const unlocked = new Set<ToolGroup>();
+    if (small) {
+      for (const g of groupsFromHistory(messages, appTouched)) unlocked.add(g);
+      if (project?.startsWith("app:")) unlocked.add("app");
+      const groups = availableGroups(tools);
+      if (groups.length) tools.push(buildToolsEnable(groups, (g) => unlocked.add(g)));
+    }
     // request level → user default → medium for reasoning-capable models,
     // clamped by pi-ai's clampThinkingLevel (walks the ladder to a supported one)
     const level = clampThinkingLevel(
@@ -462,7 +486,7 @@ export class UserAgent {
         // pi-agent-core's contract: this hook must never throw
         try {
           const st = agent.state;
-          const fit = fitContext(st.model, { systemPrompt: st.systemPrompt, messages: msgs, tools: st.tools }, { force: budget.force, state: trim });
+          const fit = fitContext(st.model, { systemPrompt: st.systemPrompt, messages: msgs, tools: visibleTools(st.tools, small, unlocked) }, { force: budget.force, state: trim });
           if (fit.advanced) log.info(`[agent:${sessionId}] context trimmed ~${fit.before} → ~${fit.after} tokens (window ${st.model.contextWindow})`);
           return fit.messages;
         } catch (e) {
@@ -473,8 +497,8 @@ export class UserAgent {
       initialState: {
         model,
         systemPrompt:
-          systemPromptFor(username, isAdmin, paths, opts.sandbox) +
-          memoryPromptSection(paths.root) +
+          (small ? compactPromptFor(username, isAdmin, paths, shellOn, availableGroups(tools)) : systemPromptFor(username, isAdmin, paths, opts.sandbox)) +
+          memoryPromptSection(paths.root, { compact: small }) +
           (project ? projectPromptSection(paths.root, project) : "") +
           (opts.mode === "plan" ? PLAN_MODE_PROMPT : ""),
         tools,
@@ -500,7 +524,13 @@ export class UserAgent {
       // touches that app, once per agent (see memory.ts)
       afterToolCall: async (ctx) => {
         try {
+          if (small && !ctx.isError) {
+            const loaded = ctx.toolCall.name === "skill_load" ? (ctx.args as { name?: unknown } | undefined)?.name : undefined;
+            const fromSkill = typeof loaded === "string" ? SKILL_UNLOCKS[loaded] : undefined;
+            if (fromSkill) unlocked.add(fromSkill);
+          }
           const appId = appTouched(ctx.toolCall.name, ctx.args);
+          if (small && appId) unlocked.add("app");
           if (!appId || shownProjects.has(appId)) return undefined;
           shownProjects.add(appId);
           const extra = projectContextFor(paths.root, appId);
@@ -510,9 +540,11 @@ export class UserAgent {
           return undefined;
         }
       },
+      // every tool stays executable; the model is sent only the visible ones
       streamFn: (m, c, o) => {
-        const maxTokens = clampMaxTokens(m, c, o?.maxTokens);
-        return svc.streamFn(m, c, maxTokens !== undefined ? { ...o, maxTokens } : o, sessionId);
+        const sent = c.tools ? { ...c, tools: visibleTools(c.tools as AgentTool[], small, unlocked) } : c;
+        const maxTokens = clampMaxTokens(m, sent, o?.maxTokens);
+        return svc.streamFn(m, sent, maxTokens !== undefined ? { ...o, maxTokens } : o, sessionId, small ? { smallModelMode: true } : undefined);
       },
     });
     return new UserAgent(agent, sessionId, sFile, budget, svc, project, runState, paths.root);
@@ -1240,10 +1272,8 @@ function installedAppsSection(paths: UserPaths): string {
   return `${lines.join("\n")}\n`;
 }
 
-function systemPromptFor(username: string, isAdmin: boolean, paths: UserPaths, sandbox?: AgentToolOptions["sandbox"]): string {
-  const base = `You are the personal agent of "${username}" on their Chrysalis instance — a local engine where EVERYTHING is files you can edit (like code): apps, characters, chats, plugins, looks.
-
-# Workspace layout (your whole world)
+/** The full map, used when AGENTS.md is missing or carries no Layout part. */
+const FULL_LAYOUT = `# Workspace layout (your whole world)
 - apps/<app-id>/            — installed apps. THE unit of experience. Every app UI is a standard web project (React + tailwind by default; any framework-free TS/JS works too).
   - manifest.json           { name, version, kind, origin }
   - package.json, index.html, src/  — the app's UI (built in the user's browser on save; the open tab hot-updates)
@@ -1254,7 +1284,25 @@ function systemPromptFor(username: string, isAdmin: boolean, paths: UserPaths, s
 - projects/<name>/          — the user's free projects (plugins, research, ideas): PROJECT.md instructions, project.json settings, files/ reference uploads. An app's own project settings and uploads sit in apps/<id>/.project/. Uploads (files/) are outside git and read-only for you.
 (User-managed config is NOT here: MCP servers, model connections, speech endpoints and settings all live outside this workspace with the credentials; the Settings UI owns them and you do not read or edit them. Asking the user to change one there is the right move when something is missing.)
 - providers.json            — custom model providers { providers: { id: { api: openai-completions|anthropic-messages, baseUrl, models: [...] | "auto" } } }
-- agent/sessions/           — your own session transcripts (readable)
+- agent/sessions/           — your own session transcripts (readable)`;
+
+/** What the system prompt adds when the inlined AGENTS.md maps the folders
+ *  itself: the two used to say the same thing twice, every request. */
+const SHORT_LAYOUT = `# Workspace layout (your whole world)
+The workspace contract below (AGENTS.md) maps the folders. Beyond it:
+- apps/<app-id>/manifest.json is { name, version, kind, origin }; apps/<app-id>/plugins/<id>/ holds manifest.json {permissions} + plugin.js; dist/.chrysalis-build.json holds the last build's errors.
+- providers.json: { providers: { id: { api: openai-completions|anthropic-messages, baseUrl, models: [...] | "auto" } } }
+- agent/sessions/: your own session transcripts (readable).
+- MCP servers, model connections, speech endpoints and settings live outside this workspace; ask the user to change them in Settings.`;
+
+function workspaceLayout(paths: UserPaths): string {
+  return /^## Layout\b/m.test(readDoc(paths.root, "AGENTS.md", 10_000) ?? "") ? SHORT_LAYOUT : FULL_LAYOUT;
+}
+
+function systemPromptFor(username: string, isAdmin: boolean, paths: UserPaths, sandbox?: AgentToolOptions["sandbox"]): string {
+  const base = `You are the personal agent of "${username}" on their Chrysalis instance — a local engine where EVERYTHING is files you can edit (like code): apps, characters, chats, plugins, looks.
+
+${workspaceLayout(paths)}
 
 # App/plugin authoring contract (how you build things)
 plugin.js is an ES MODULE — use ESM syntax exactly like this (NOT CommonJS \`exports.foo\`):
@@ -1311,6 +1359,12 @@ ${installedAppsSection(paths)}Before editing an app, read its own AGENTS.md and 
   // Chrysalis in general.
   const docs = instructionDocs(paths);
   if (docs) out += `\n\n${docs}`;
+  return out + notesAndPersona(paths, username);
+}
+
+/** The user's notes index and their standing instructions, both modes. */
+function notesAndPersona(paths: UserPaths, username: string): string {
+  let out = "";
   const notes = notesIndex(paths, username);
   if (notes) out += `\n\n${notes}`;
   // personal instructions (persona.md, user-editable via settings)
@@ -1321,6 +1375,16 @@ ${installedAppsSection(paths)}Before editing an app, read its own AGENTS.md and 
     /* no persona yet */
   }
   return out;
+}
+
+/** Small-window mode: the compact prompt, the app list by id and name, and
+ *  pointers instead of the inlined AGENTS.md files (small-window.ts). */
+function compactPromptFor(username: string, isAdmin: boolean, paths: UserPaths, shell: boolean, groups: ToolGroup[]): string {
+  const active = activeAppId(paths);
+  const apps = listApps(paths.apps)
+    .map((a) => `- apps/${a.id}/ (${a.manifest.name})${a.id === active ? " [ACTIVE]" : ""}`)
+    .join("\n");
+  return compactSystemPrompt({ username, apps, admin: isAdmin, shell, groups }) + notesAndPersona(paths, username);
 }
 
 /** What a server setting change means for the person approving it, in the

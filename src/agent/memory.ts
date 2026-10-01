@@ -283,10 +283,34 @@ const skillLine = (s: SkillInfo): string =>
 
 // ---------- what the model sees ----------
 
+/** A skill in the small-window index: name and the first sentence only. */
+const shortSkillLine = (s: SkillInfo): string => {
+  const first = s.description.split(/(?<=[.!?])\s/)[0] ?? "";
+  return `- ${s.name}${s.scope === "global" ? "" : ` (${s.scope})`}: ${first.length > 140 ? `${first.slice(0, 139)}…` : first}`;
+};
+
+/** Small-window mode keeps less of MEMORY.md in view. */
+const COMPACT_MEMORY_CHARS = 2000;
+
 /** The system-prompt section: global memory, the skills index, the rules. */
-export function memoryPromptSection(root: string): string {
+export function memoryPromptSection(root: string, opts: { compact?: boolean } = {}): string {
   const memory = readText(root, GLOBAL_MEMORY).trim();
   const skills = listSkills(root);
+  if (opts.compact) {
+    return `
+
+# Memory and skills
+## What you remember (${GLOBAL_MEMORY})
+${memory ? clipMemory(memory, COMPACT_MEMORY_CHARS) : "(nothing yet)"}
+
+## Skills (skill_load <name> before a task one covers)
+${skills.length ? skills.map(shortSkillLine).join("\n") : "(none yet)"}
+
+## Rules
+- Remember durable things (a preference, a decision, a gotcha that cost time) with memory_propose, once, at a natural stopping point. No trivia, no secrets. Never say it is saved until the tool says so.
+- Memory and skill folders change only through the tools; the user confirms each change. A project's memory and skills show the first time you touch that app.
+- When a task took several attempts or the user corrected you twice, offer a skill: load skill-authoring first.`;
+  }
   return `
 
 # Memory and skills

@@ -91,7 +91,7 @@ export function estimateMessageTokens(m: AgentMessage): number {
   return tokens;
 }
 
-function toolsTokens(tools: readonly unknown[] | undefined): number {
+export function toolsTokens(tools: readonly unknown[] | undefined): number {
   if (!tools?.length) return 0;
   return estimateTextTokens(
     safeJson(

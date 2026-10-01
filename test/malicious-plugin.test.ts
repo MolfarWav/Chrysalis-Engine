@@ -185,7 +185,7 @@ describe("exfiltration ways out of an app page", () => {
 
     for (const path of [
       "/v1/agent", "/v1/agent/sessions", "/v1/agent/files", "/v1/shell", "/v1/admin/users",
-      "/v1/settings", "/v1/settings/persona", "/v1/settings/agent-protection", "/v1/mcp", "/v1/mcp/tools", "/v1/mcp/tools/x/call",
+      "/v1/settings", "/v1/settings/persona", "/v1/settings/agent-protection", "/v1/inspector", "/v1/mcp", "/v1/mcp/tools", "/v1/mcp/tools/x/call",
       "/v1/auth/users", "/v1/git/log", "/v1/sandbox", "/v1/apps", "/v1/apps/other/chats",
       "/v1/apps/roleplay", "/v1/apps/roleplay/tree", "/v1/apps/roleplay/plugins", "/v1/apps/roleplay/install",
       "/v1/apps/roleplay/dev", "/v1/apps/roleplay/update", "/v1/apps/roleplay/updates",

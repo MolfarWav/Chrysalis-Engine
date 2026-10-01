@@ -35,6 +35,7 @@ import { normalizeAskOption } from "../agent/tools.js";
 import * as projects from "../agent/projects.js";
 import * as checkpoints from "../agent/checkpoints.js";
 import * as protect from "../agent/protect.js";
+import * as inspector from "../inspector.js";
 import * as profileBackup from "../profile-backup.js";
 import { summarizeSession } from "../agent/compact.js";
 import * as agentMemory from "../agent/memory.js";
@@ -2575,6 +2576,19 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
       const status = e instanceof HttpError ? e.status : 500;
       return c.json({ error: (e as Error).message }, status as 400 | 404 | 500 | 503);
     }
+  });
+
+  // ---------- prompt inspector: what the models were actually sent ----------
+  // In memory only, per user (inspector.ts). Shell-only: an app frame never
+  // reads another source's prompts.
+  app.get("/v1/inspector", (c) => c.json({ entries: inspector.listInspected(c.get("user").username) }));
+  app.get("/v1/inspector/:id", (c) => {
+    const e = inspector.getInspected(c.get("user").username, c.req.param("id"));
+    return e ? c.json(e) : c.json({ error: "not in the inspector any more" }, 404);
+  });
+  app.delete("/v1/inspector", (c) => {
+    inspector.clearInspected(c.get("user").username);
+    return c.json({ ok: true });
   });
 
   // ---------- agent memory and skills (the panel on the agent page) ----------

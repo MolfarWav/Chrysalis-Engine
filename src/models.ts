@@ -14,6 +14,8 @@ import { readConnections, authTarget, connectionKeyUsable, readAuth } from "./co
 import { formatFromModelName, formatFromTemplate, parsePromptFormat, promptFormatById, renderPrompt, stopStrings, type PromptFormat } from "./providers/prompt-formats.js";
 import { log } from "./logger.js";
 import { llmLogRequest, llmLogResult, llmLogError, llmLogTool } from "./llm-logger.js";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { inspectAssistantMessage, inspectRequest, inspectResult, type InspectorEntry } from "./inspector.js";
 import type { UserPaths } from "./paths.js";
 import type { InstanceConfig } from "./config.js";
 
@@ -267,6 +269,11 @@ export interface ResolvedPromptFormat {
 }
 
 const FORMAT_DETECT_TTL = 60_000;
+
+/** The inspector entry of the generate() call in progress: the request is
+ *  recorded where it is built (deep in the provider paths), the outcome where
+ *  generate() returns. A retry records a new request in the same slot. */
+const inspecting = new AsyncLocalStorage<{ entry?: InspectorEntry }>();
 
 export class UserModelService {
   readonly models: MutableModels;
@@ -594,9 +601,19 @@ export class UserModelService {
   async generate(req: GenerateRequest, onDelta?: (delta: string) => void, onThinking?: (delta: string) => void): Promise<GenerateResult> {
     const t0 = Date.now();
     const label = req.model ?? "default-model";
+    const slot: { entry?: InspectorEntry } = {};
     try {
-      const res = await this.generateWithReasoningFloor(req, onDelta, onThinking);
+      const res = await inspecting.run(slot, () => this.generateWithReasoningFloor(req, onDelta, onThinking));
       llmLogResult(req.source, res.model || label, Date.now() - t0, res);
+      if (slot.entry) {
+        const u = res.usage;
+        inspectResult(slot.entry, {
+          text: res.text,
+          ...(res.reasoning ? { reasoning: res.reasoning } : {}),
+          ...(res.toolTrace?.length ? { toolCalls: res.toolTrace.map((t) => t.name) } : {}),
+          ...(u ? { usage: { input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite, ...(u.costTotal ? { cost: u.costTotal } : {}) } } : {}),
+        });
+      }
       // stateless echoes for two-phase callers (their module state resets
       // between passes): timing, sampler snapshot, prefill metadata
       res.genTimeMs = Date.now() - t0;
@@ -605,8 +622,17 @@ export class UserModelService {
       return res;
     } catch (e) {
       llmLogError(req.source, label, Date.now() - t0, e);
+      if (slot.entry) inspectResult(slot.entry, { error: (e as Error).message ?? String(e) });
       throw e;
     }
+  }
+
+  /** Record a generate() request for the inspector (see `inspecting`). */
+  private inspectGenerate(r: Parameters<typeof inspectRequest>[1]): void {
+    const slot = inspecting.getStore();
+    if (!slot) return;
+    if (slot.entry?.pending) inspectResult(slot.entry, { error: "retried" });
+    slot.entry = inspectRequest(this.username, r);
   }
 
   /** Models that refused a request with reasoning switched off, by ref, and
@@ -746,6 +772,13 @@ export class UserModelService {
       connection: `${entry.name} · ${resolved.name} (${resolved.source})`,
       params: body,
       prompt,
+    });
+    // a text-completion model sees one flattened prompt, so that is the view
+    this.inspectGenerate({
+      source: req.source ?? "engine",
+      model: `${model.provider}/${model.id}`,
+      params: { ...body, prompt: undefined },
+      messages: [{ role: "prompt", content: prompt }],
     });
 
     const res = await fetch(entry.baseUrl.replace(/\/$/, "") + "/completions", {
@@ -979,6 +1012,15 @@ export class UserModelService {
       params: genOpts,
       systemPrompt,
       messages: req.messages,
+    });
+    this.inspectGenerate({
+      source: req.source ?? "engine",
+      model: `${model.provider}/${model.id}`,
+      contextWindow: model.contextWindow,
+      params: genOpts,
+      ...(systemPrompt ? { systemPrompt } : {}),
+      messages: req.messages,
+      ...(allTools.length && hasToolExec ? { tools: allTools } : {}),
     });
 
     // text the model writes BEFORE pausing to call tools — kept so the result
@@ -1223,14 +1265,39 @@ export class UserModelService {
     // pi-agent-core sends the ThinkingLevel as `reasoning`, but openai-completions
     // endpoints (deepseek etc.) read `reasoningEffort` — pass both so every
     // api layer actually receives the level.
-    const opts = merged as (typeof merged & { reasoning?: string; reasoningEffort?: string }) | undefined
-    if (opts?.reasoning && !opts.reasoningEffort) {
-      return this.models.streamSimple(model, context, {
-        ...opts,
-        reasoningEffort: opts.reasoning,
-      } as Parameters<MutableModels["streamSimple"]>[2])
+    const opts = merged as (typeof merged & { reasoning?: string; reasoningEffort?: string; maxTokens?: number; temperature?: number }) | undefined
+    const stream =
+      opts?.reasoning && !opts.reasoningEffort
+        ? this.models.streamSimple(model, context, {
+            ...opts,
+            reasoningEffort: opts.reasoning,
+          } as Parameters<MutableModels["streamSimple"]>[2])
+        : this.models.streamSimple(model, context, merged)
+    // the inspector watches the final message beside the agent's own reading
+    // of the stream (result() is a separate promise; nothing is consumed)
+    try {
+      const entry = inspectRequest(this.username, {
+        source: "agent",
+        ...(sessionId ? { sessionId } : {}),
+        model: `${model.provider}/${model.id}`,
+        contextWindow: model.contextWindow,
+        params: {
+          ...(opts?.reasoning ? { reasoning: opts.reasoning } : {}),
+          ...(opts?.maxTokens ? { maxTokens: opts.maxTokens } : {}),
+          ...(opts?.temperature != null ? { temperature: opts.temperature } : {}),
+        },
+        ...(context.systemPrompt ? { systemPrompt: context.systemPrompt } : {}),
+        messages: context.messages,
+        ...(context.tools?.length ? { tools: context.tools } : {}),
+      });
+      void Promise.resolve(stream.result()).then(
+        (m) => inspectAssistantMessage(entry, m),
+        (e: unknown) => inspectResult(entry, { error: e instanceof Error ? e.message : String(e) }),
+      );
+    } catch {
+      /* the inspector never breaks a request */
     }
-    return this.models.streamSimple(model, context, merged)
+    return stream
   }
 
   // ---------- image generation (pi-ai images API; creds never leave) ----------

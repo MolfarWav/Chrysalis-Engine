@@ -33,6 +33,8 @@ export interface GitCliOptions {
   cwd?: string;
   /** How clone reaches the internet; absent while the user has it off. */
   http?: HttpClient;
+  /** Why a file may not be written back right now (protected paths). */
+  writeRefused?: (file: string) => string | null;
 }
 
 export class GitCliError extends Error {}
@@ -444,7 +446,7 @@ async function commit(o: GitCliOptions, args: string[]): Promise<string> {
 async function writeBack(o: GitCliOptions, oid: string, files: Map<string, Buffer | null>, message: string): Promise<string> {
   const guard = makePathGuard(o.dir);
   for (const file of files.keys()) {
-    const reason = agentWriteDenied(file) ?? (gitBoundaryIgnored(file) ? "not part of the workspace history" : null);
+    const reason = agentWriteDenied(file) ?? (gitBoundaryIgnored(file) ? "not part of the workspace history" : null) ?? o.writeRefused?.(file) ?? null;
     if (reason) fail(`${file}: ${reason}`);
     guard.assertWritable(path.join(o.dir, file), file);
   }

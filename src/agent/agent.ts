@@ -22,6 +22,7 @@ import { clampThinkingLevel, isContextOverflow, type AssistantMessage } from "@e
 import { clampMaxTokens, fitContext, newTrimState } from "./context-budget.js";
 import { appTouched, buildMemoryTools, memoryPromptSection, projectContextFor } from "./memory.js";
 import { buildCheckpointTool, changedSince, createCheckpoint, type Checkpoint } from "./checkpoints.js";
+import { resetAllowed } from "./protect.js";
 import { readSandboxSettings } from "../sandbox/network.js";
 import { projectLayout, projectPromptSection, readSettings } from "./projects.js";
 
@@ -40,6 +41,7 @@ export interface AgentRunTurn {
 const AUTO_CHECKPOINT_TOOLS = new Set(["write_file", "edit_file", "bash", "app_deps"]);
 
 interface RunState {
+  username: string;
   /** The run's request, shortened: the automatic checkpoint's label. */
   label: string;
   checkpoints: Map<string, Checkpoint>;
@@ -351,7 +353,7 @@ export class UserAgent {
     /** The project this session belongs to (null: a plain chat). */
     readonly project: string | null = null,
     /** Checkpoints the current run took (reset at each run). */
-    private runState: RunState = { label: "", checkpoints: new Map() },
+    private runState: RunState = { username: "", label: "", checkpoints: new Map() },
     private root = "",
   ) {}
 
@@ -395,7 +397,7 @@ export class UserAgent {
       }
     }
     const projectSettings = project ? readSettings(paths.root, projectLayout(paths.root, project)) : null;
-    const runState: RunState = { label: "", checkpoints: new Map() };
+    const runState: RunState = { username, label: "", checkpoints: new Map() };
 
     let tools: AgentTool[] = [
       ...buildUserTools(username, paths, {
@@ -550,6 +552,8 @@ export class UserAgent {
     this.markStarted(userMessage);
     this.runState.label = userMessage.replace(/\s+/g, " ").trim().slice(0, 60) || "a request";
     this.runState.checkpoints.clear();
+    // what the user allowed in protected paths covers one request
+    if (this.runState.username) resetAllowed(this.runState.username);
     // "@path" in the message means the person is pointing at a file. Reading
     // it here saves the model a round trip to find out what they meant, and
     // saves them wondering why it went looking instead of just looking.
@@ -1278,6 +1282,7 @@ ${installedAppsSection(paths)}Before editing an app, read its own AGENTS.md and 
 - App data files (apps/<id>/data/) are plain JSON/JSONL you can read and edit directly — open clients sync within ~1s, no reload. Underscore-prefixed files there (_example.json) are AI-only templates: never shown in the UI, copy one to a real name to create the entity. Copy the template's field shape exactly.
 - Plugins and manifests hot-reload by mtime; nothing to call. Create apps with app_create.
 - After editing an app's src/ or package.json, run app_check before you call it done.
+- Protected paths (by default an app's src/ and index.html, plus persona.md) change only after the user allows it in a card, once per request and app. A no means: put the change in data/ or a plugin of your own, or explain why those files must change. Never work around it through bash or git.
 - Checkpoints: before building a feature or a risky change in an app, call checkpoint { action: "create", app, label }. Commit bash changes first (the checkpoint does it too). The engine also takes one before your first change to an app in each request. When app_check keeps failing after your fixes, or the user says the app broke, offer to go back with ask_user, then checkpoint { action: "restore" }. A restore puts back code only; data/ stays.
 - Need a fresh build even though nothing changed (a stale page, a hot-update chain that went wrong, an untrusted status): app_rebuild forces one, like the pane's Rebuild button.
 - console.log/info/warn/debug from an open app page are captured: app_console reads them back like a test log (newest last). Print, let the page run, read. Nothing is captured while no page has the app open.

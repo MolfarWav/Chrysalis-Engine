@@ -10,6 +10,7 @@ import { createTwoFilesPatch } from "diff";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { UserPaths } from "../paths.js";
 import { agentReadDenied, agentWriteDenied, safeResolve } from "../paths.js";
+import { allow, areasInCommand, isAllowed, protectedArea, protectedRefusal, readProtectedPaths, type ProtectedArea } from "./protect.js";
 import type { SandboxRunner } from "../sandbox/index.js";
 import { guardedGitHttp, readSandboxSettings } from "../sandbox/network.js";
 import { makePathGuard } from "../sandbox/workspace.js";
@@ -202,6 +203,31 @@ export function normalizeAsk(params: unknown): AskRequest | null {
 export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOptions = { dataDir: "." }): AgentTool[] {
   const guard = makePathGuard(p.root);
 
+  /** Ask once per request and area before a protected path changes (protect.ts). */
+  const askToChange = async (area: ProtectedArea, detail: string, diff: boolean): Promise<void> => {
+    if (isAllowed(username, area.key)) return;
+    if (!opts.ask) throw new Error(`Refused: ${area.label} are protected and the user is not available to allow a change.`);
+    const answer = (
+      await opts.ask({
+        question: `Allow changes to ${area.label} for the rest of this request?`,
+        options: [
+          { label: "Allow", description: "this request only; the next one asks again" },
+          { label: "Don't allow", description: "the agent looks for another way, or explains why it needs this" },
+        ],
+        detail,
+        ...(diff ? { detailKind: "diff" as const } : {}),
+      })
+    ).trim();
+    if (answer === "Allow") {
+      allow(username, area.key);
+      return;
+    }
+    throw new Error(
+      `Refused: the user did not allow changes to ${area.label}.${answer && answer !== "Don't allow" && answer !== "(no answer)" ? ` They said: ${answer}.` : ""} If the change can live in the app's data/ or in a plugin of your own, put it there; otherwise explain why these files must change and wait for the user.`,
+    );
+  };
+  const protectedFor = (rel: string): ProtectedArea | null => protectedArea(rel, readProtectedPaths(p.settings));
+
   const askUser: AgentTool = {
     name: "ask_user",
     label: "Ask the user",
@@ -318,6 +344,8 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
       if (count === 0) throw new Error("oldText not found in file.");
       if (count > 1) throw new Error(`oldText matches ${count} times — include more surrounding lines to make it unique.`);
       const next = content.replace(oldText, newText);
+      const area = protectedFor(rel);
+      if (area) await askToChange(area, fileDiff(rel, content, next) ?? rel, true);
       fs.writeFileSync(abs, next, "utf8");
       let committed = "";
       try {
@@ -416,6 +444,8 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
       // read the file the write replaces BEFORE it lands: the write commits
       // immediately, so afterwards there is nothing left to diff against
       const before = fs.existsSync(abs) ? fs.readFileSync(abs, "utf8") : "";
+      const area = protectedFor(rel);
+      if (area) await askToChange(area, fileDiff(rel, before, content) ?? rel, true);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, content, "utf8");
       let committed = "";
@@ -446,7 +476,10 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
       const args = typeof given.args === "string" ? given.args : legacyGitArgs(given);
       if (!args?.trim()) throw new Error(`git needs arguments. Supported: ${GIT_COMMANDS}.`);
       const http = readSandboxSettings(p.sandbox).internet ? guardedGitHttp : undefined;
-      const out = await runGitCli({ dir: p.root, username, readOnly: opts.mode === "plan", http }, args);
+      const out = await runGitCli(
+        { dir: p.root, username, readOnly: opts.mode === "plan", http, writeRefused: (file) => protectedRefusal(username, p.settings, file) },
+        args,
+      );
       return textResult(out || "(no output)", { args });
     },
   };
@@ -687,6 +720,9 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
       if (!opts.sandbox) throw new Error("No shell is configured on this instance.");
       const { command } = params as { command: string };
       const { timeout_ms } = params as { timeout_ms?: number };
+      // a command that names protected files and looks like it writes asks
+      // first; the write-back refuses whatever it changes there unasked
+      for (const area of areasInCommand(command, readProtectedPaths(p.settings))) await askToChange(area, command, false);
       const res = await opts.sandbox.run(username, p.root, { command, ...(timeout_ms ? { timeoutMs: timeout_ms } : {}) });
       if ("error" in res) throw new Error(`Sandbox unavailable: ${res.error}`);
       const parts: string[] = [];

@@ -145,7 +145,7 @@ export interface FsOpResult {
 
 /** Run one workspace fs op. Throws on policy violations (the route turns
  *  those into a 400); individual missing files are simply skipped. */
-export function workspaceFs(root: string, op: FsOp): FsOpResult {
+export function workspaceFs(root: string, op: FsOp, writeRefused: (rel: string) => string | null = () => null): FsOpResult {
   const guard = makePathGuard(root);
   if (op.op === "tree") return { tree: listWorkspaceFiles(root) };
   if (op.op === "read") {
@@ -167,7 +167,7 @@ export function workspaceFs(root: string, op: FsOp): FsOpResult {
   if (op.op === "write") {
     let total = 0;
     for (const f of op.files.slice(0, MAX_BATCH)) {
-      const bad = sandboxPathAllowed(f.path) ?? agentWriteDenied(f.path);
+      const bad = sandboxPathAllowed(f.path) ?? agentWriteDenied(f.path) ?? writeRefused(f.path);
       if (bad) throw new Error(`Refused: ${f.path}: ${bad}`);
       const buf = Buffer.from(f.b64, "base64");
       if (buf.length > MAX_WRITE_FILE) throw new Error(`Refused: ${f.path} is too large for the sandbox to write`);
@@ -181,7 +181,7 @@ export function workspaceFs(root: string, op: FsOp): FsOpResult {
     return { ok: true };
   }
   for (const rel of op.paths.slice(0, MAX_BATCH)) {
-    const bad = sandboxPathAllowed(rel) ?? agentWriteDenied(rel);
+    const bad = sandboxPathAllowed(rel) ?? agentWriteDenied(rel) ?? writeRefused(rel);
     if (bad) throw new Error(`Refused: ${bad}`);
     const abs = path.resolve(root, rel);
     guard.assertWritable(abs, rel);

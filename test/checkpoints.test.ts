@@ -97,6 +97,8 @@ describe("checkpoints", () => {
   });
 
   it("a run that changes an app takes a checkpoint first and reports it; a run that only reads does not", async () => {
+    // protected paths ask the user, and no one answers here: off for this test
+    put("settings.json", JSON.stringify({ agentProtectedPaths: [] }));
     const users = new UserService(dataDir);
     users.create("mia", "user", { password: "test-pass-1" });
     const svc = new UserModelService("mia", userPaths(dataDir, "mia"), defaultInstanceConfig());

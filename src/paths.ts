@@ -249,6 +249,18 @@ Read the app's own AGENTS.md before deciding: it says which of its behavior is a
 - After editing plugins/manifests, the engine hot-reloads; if unsure, ask the user to refresh.
 `;
 
+/** The agent instructions a workspace starts with (persona.md), and what
+ *  Settings > "Restore default instructions" puts back. Short on purpose: it
+ *  rides every request, and the rules that must hold are enforced in code
+ *  (AGENT_WRITE_DENYLIST, protected paths), not here. */
+export const DEFAULT_PERSONA = `- Reply in the language the user writes in.
+- Before building a new app, a UI, or a large feature, ask your questions first (one ask_user card, options with a short explanation each). Skip it when the request is already precise.
+- Put a change in the lightest place that carries it: the app's data/ first, then a plugin of your own, and the app's UI code (src/) only when the change needs it. UI code is protected: the user confirms before you change it.
+- Take a checkpoint before a risky change. When a build keeps failing, offer to restore one instead of piling on fixes.
+- Before you say "done", verify it (skill finish-change) and say what you could not check.
+- When a procedure took several attempts, or the user corrected you twice, offer to keep it as a skill.
+`;
+
 export function bootstrapUserDir(dataDir: string, username: string): UserPaths {
   const p = userPaths(dataDir, username);
   for (const dir of [p.plugins, p.apps, p.assetsStore, p.store, path.dirname(p.auth)]) {
@@ -265,6 +277,8 @@ export function bootstrapUserDir(dataDir: string, username: string): UserPaths {
   if (!fs.existsSync(gi)) fs.writeFileSync(gi, USER_GITIGNORE, "utf8");
   const am = path.join(p.root, "AGENTS.md");
   if (!fs.existsSync(am)) fs.writeFileSync(am, workspaceAgentsMd(), "utf8");
+  // a workspace starts with the default instructions; an emptied file stays empty
+  if (!fs.existsSync(p.persona)) fs.writeFileSync(p.persona, DEFAULT_PERSONA, "utf8");
   for (const [name, readme] of [["notes", NOTES_README], ["commands", COMMANDS_README]] as const) {
     const dir = path.join(p.root, name);
     if (fs.existsSync(dir)) continue;

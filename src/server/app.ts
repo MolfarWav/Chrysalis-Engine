@@ -23,7 +23,7 @@ import { ENGINE_REPOSITORY, ENGINE_VERSION, resourcesDir } from "../install.js";
 import type { ServerSettings } from "./settings.js";
 import { latestRelease } from "../updates.js";
 import { SELF_UPDATE, startUpdate, updateState } from "../self-update.js";
-import { agentReadDenied, userPaths, safeResolve, type UserPaths } from "../paths.js";
+import { DEFAULT_PERSONA, agentReadDenied, userPaths, safeResolve, type UserPaths } from "../paths.js";
 import * as git from "../git.js";
 import { UserModelService, ModelNotConfiguredError, type ModelPricing } from "../models.js";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
@@ -34,6 +34,7 @@ import { UserAgent, instructionDocsStamp, listSessions, renameSession, archiveSe
 import { normalizeAskOption } from "../agent/tools.js";
 import * as projects from "../agent/projects.js";
 import * as checkpoints from "../agent/checkpoints.js";
+import * as protect from "../agent/protect.js";
 import * as profileBackup from "../profile-backup.js";
 import { summarizeSession } from "../agent/compact.js";
 import * as agentMemory from "../agent/memory.js";
@@ -1428,7 +1429,9 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
       return c.json({ error: "bad json" }, 400);
     }
     try {
-      return c.json(workspaceFs(c.get("paths").root, op as WorkspaceFsOp));
+      const username = c.get("user").username;
+      const settings = c.get("paths").settings;
+      return c.json(workspaceFs(c.get("paths").root, op as WorkspaceFsOp, (rel) => protect.protectedRefusal(username, settings, rel)));
     } catch (e) {
       return c.json({ error: (e as Error).message }, 400);
     }
@@ -2938,13 +2941,16 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
   });
 
   // personal agent instructions (persona.md, git-tracked)
+  // default: what "Restore default instructions" puts back (the whole text)
   app.get("/v1/settings/persona", (c) => {
     const p = c.get("paths");
+    let persona = "";
     try {
-      return c.json({ persona: fs.readFileSync(p.persona, "utf8") });
+      persona = fs.readFileSync(p.persona, "utf8");
     } catch {
-      return c.json({ persona: "" });
+      /* none yet */
     }
+    return c.json({ persona, default: DEFAULT_PERSONA });
   });
 
   app.put("/v1/settings/persona", async (c) => {
@@ -2959,6 +2965,27 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     await git.commitAll(p.root, u.username, "settings: agent instructions").catch(() => undefined);
     evictAgents(u.username); // system prompt snapshots at agent creation
     return c.json({ ok: true });
+  });
+
+  // ---------- protected paths: the agent changes these only after a yes ----------
+  app.get("/v1/settings/agent-protection", (c) => {
+    const p = c.get("paths");
+    return c.json({ paths: protect.readProtectedPaths(p.settings), defaults: protect.DEFAULT_PROTECTED_PATHS, always: protect.ALWAYS_PROTECTED });
+  });
+
+  app.put("/v1/settings/agent-protection", async (c) => {
+    const u = c.get("user");
+    const p = c.get("paths");
+    const body = await c.req.json<{ paths?: unknown }>().catch(() => ({}) as { paths?: unknown });
+    let list: string[];
+    try {
+      list = protect.validateProtectedPaths(body.paths);
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 400);
+    }
+    protect.writeProtectedPaths(p.settings, list);
+    await git.commitAll(p.root, u.username, "settings: protected paths").catch(() => undefined);
+    return c.json({ paths: list });
   });
 
   app.post("/v1/settings/connections", async (c) => {

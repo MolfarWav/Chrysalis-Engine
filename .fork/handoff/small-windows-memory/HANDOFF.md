@@ -10,6 +10,7 @@ browser and known traps are in `.fork/handoff/next/HANDOFF.md` sections 0, 1,
 ## 0. Start
 - `git checkout -B <your-branch> origin/claude/fervent-thompson-tej67n` (check for a newer `claude/*` branch first).
 - The user's choices already made are listed per task. Do not ask them again.
+- Standing rules are in `CLAUDE.md`; the browser recipe is the repo skill `.claude/skills/browser-check/`.
 - Pattern that worked this session: you write the engine part and its tests; a Sonnet subagent builds the UI from a precise spec (API shapes, files, a Playwright run with screenshots); you review its diff and screenshots, then commit. The agent page (`client-agent/`) has no i18n; the shell (`client/`) needs all 13 locales.
 - A mock OpenAI-compatible server for real agent runs in the browser: see `.fork/STATE.md` notes; the pattern is a Bun server answering `/v1/chat/completions` with SSE chunks (tool call first, text second), a connection pointing at it, `models-shown.json` limited to it, and `localStorage["agent-ui-model"]` set to its ref. Without that the engine picks another provider from the environment.
 

@@ -20,7 +20,9 @@ dist/
 *.key
 
 # editors, OS and tools
-/.claude/
+# local Claude settings stay local; the fork's repo skills are shared
+/.claude/*
+!/.claude/skills/
 .vscode/
 .idea/
 .DS_Store

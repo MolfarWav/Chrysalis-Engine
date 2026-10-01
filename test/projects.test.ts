@@ -11,7 +11,7 @@ import { unzipSync } from "fflate";
 import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import * as projects from "../src/agent/projects.js";
 import { appendEntry, listSkills, resolveScope } from "../src/agent/memory.js";
-import { UserAgent, listSessions, sessionProject } from "../src/agent/agent.js";
+import { UserAgent, listSessions, moveSession, sessionFile, sessionProject } from "../src/agent/agent.js";
 import { buildBackup } from "../src/apps/backup.js";
 import { readCodeTree } from "../src/apps/update.js";
 import * as git from "../src/git.js";
@@ -299,6 +299,7 @@ describe("project routes", () => {
     for (const [method, url] of [
       ["GET", "/v1/projects"], ["POST", "/v1/projects"], ["GET", "/v1/projects/app:roleplay"], ["GET", "/v1/projects/app:roleplay/files/mock.png"],
       ["PUT", "/v1/projects/app:roleplay/files/x.md"], ["DELETE", "/v1/projects/project:ideas"], ["POST", "/v1/projects/import"],
+      ["POST", "/v1/agent/sessions/s1/project"],
     ] as const) {
       const res = await req(method, url, method === "GET" ? undefined : "{}", { "x-chrysalis-app": "roleplay", "content-type": "application/json" });
       expect(res.status, `${method} ${url}`).toBe(403);
@@ -308,5 +309,60 @@ describe("project routes", () => {
     r = await req("DELETE", "/v1/projects/project:ideas");
     expect(r.status).toBe(200);
     expect(fs.existsSync(path.join(p.root, "projects/ideas"))).toBe(false);
+  }, 30_000);
+});
+
+describe("moving a chat between projects", () => {
+  const write = (id: string, lines: object[]) => {
+    const f = sessionFile(p, id);
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, `${lines.map((l) => JSON.stringify(l)).join("\n")}\n`);
+  };
+
+  it("the last move wins over the start record, without re-dating the chat", () => {
+    write("s1", [{ type: "start", at: 100, user: "hi", project: "app:roleplay" }, { type: "run", at: 200, user: "hi", messages: [] }]);
+    expect(sessionProject(p, "s1")).toBe("app:roleplay");
+    moveSession(p, "s1", "project:ideas");
+    expect(sessionProject(p, "s1")).toBe("project:ideas");
+    const row = listSessions(p).find((s) => s.sessionId === "s1");
+    expect(row?.project).toBe("project:ideas");
+    expect(row?.lastAt).toBe(200);
+    moveSession(p, "s1", null);
+    expect(sessionProject(p, "s1")).toBeNull();
+    expect(listSessions(p).find((s) => s.sessionId === "s1")?.project).toBeNull();
+    // an old chat with no start record moves too
+    write("old", [{ type: "run", at: 50, user: "x", messages: [] }]);
+    moveSession(p, "old", "app:roleplay");
+    expect(sessionProject(p, "old")).toBe("app:roleplay");
+    expect(() => moveSession(p, "nope", null)).toThrow(/not found/);
+    expect(() => moveSession(p, "s1", "../etc")).toThrow(/invalid project/);
+  });
+
+  it("the route checks the project, and truncate and fork keep the move", async () => {
+    makeApp("roleplay");
+    projects.createProject(p.root, { title: "Ideas" });
+    const { buildApp } = await import("../src/server/app.js");
+    const { SessionService } = await import("../src/sessions.js");
+    const { EventBus } = await import("../src/server/ws.js");
+    const users = new UserService(dataDir);
+    const { token } = users.create("mia", "user", { password: "test-pass-1" });
+    const app = buildApp({ users, sessions: new SessionService(dataDir), config: defaultInstanceConfig(), dataDir, bus: new EventBus() as never });
+    const post = (url: string, body: unknown) =>
+      app.request(url, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+
+    write("s1", [{ type: "start", at: 100, user: "hi" }, { type: "run", at: 200, user: "hi", messages: [] }, { type: "run", at: 300, user: "more", messages: [] }]);
+    expect((await post("/v1/agent/sessions/s1/project", { project: "project:nope" })).status).toBe(404);
+    expect((await post("/v1/agent/sessions/s1/project", { project: 5 })).status).toBe(400);
+    expect((await post("/v1/agent/sessions/missing/project", { project: null })).status).toBe(404);
+    expect((await post("/v1/agent/sessions/s1/project", { project: "app:roleplay" })).status).toBe(200);
+    expect(sessionProject(p, "s1")).toBe("app:roleplay");
+
+    expect((await post("/v1/agent/sessions/s1/truncate", { at: 300 })).status).toBe(200);
+    expect(sessionProject(p, "s1")).toBe("app:roleplay");
+    const fork = (await (await post("/v1/agent/sessions/s1/fork", {})).json()) as { sessionId: string };
+    expect(sessionProject(p, fork.sessionId)).toBe("app:roleplay");
+
+    expect((await post("/v1/agent/sessions/s1/project", { project: null })).status).toBe(200);
+    expect(sessionProject(p, "s1")).toBeNull();
   }, 30_000);
 });

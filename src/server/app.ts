@@ -30,7 +30,7 @@ import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import { radiusProvider } from "@earendil-works/pi-ai/providers/radius";
 import type { AuthPrompt, Credential, ProviderAuthInteraction } from "@earendil-works/pi-ai";
 import { curatedProviders, loadCustomProviders, reservedProviderIds } from "../providers/custom.js";
-import { UserAgent, instructionDocsStamp, listSessions, renameSession, archiveSession, sessionDir, sessionProject, isReasoningLevel, type ReasoningLevel } from "../agent/agent.js";
+import { UserAgent, instructionDocsStamp, listSessions, renameSession, archiveSession, moveSession, sessionDir, sessionProject, isReasoningLevel, type ReasoningLevel } from "../agent/agent.js";
 import * as projects from "../agent/projects.js";
 import * as profileBackup from "../profile-backup.js";
 import { summarizeSession } from "../agent/compact.js";
@@ -2408,7 +2408,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     // renames, archive state and the run-opened marker are session metadata, not dialogue:
     // they survive truncation so the thread keeps its name and its place in
     // the sidebar even when every run is cut
-    const keep = runs.filter((r) => r.type === "rename" || r.type === "start" || r.type === "archive" || (r.type === "run" && typeof r.at === "number" && (r.at as number) < cutoff));
+    const keep = runs.filter((r) => r.type === "rename" || r.type === "start" || r.type === "archive" || r.type === "project" || (r.type === "run" && typeof r.at === "number" && (r.at as number) < cutoff));
     writeRuns(p, id, keep);
     evictAgents(c.get("user").username);
     return c.json({ ok: true, runs: keep.length });
@@ -2422,7 +2422,8 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     const body = await c.req.json<{ at?: number }>().catch(() => null) ?? {};
     const runs = readRuns(p, id);
     if (runs === null) return c.json({ error: "session not found" }, 404);
-    const keep = runs.filter((r) => r.type === "rename" || r.type === "start" || (r.type === "run" && (body.at === undefined || (typeof r.at === "number" && (r.at as number) < body.at))));
+    // a fork stays in the chat's project (a move record included), but starts unarchived
+    const keep = runs.filter((r) => r.type === "rename" || r.type === "start" || r.type === "project" || (r.type === "run" && (body.at === undefined || (typeof r.at === "number" && (r.at as number) < body.at))));
     let newId = `fork-${Math.random().toString(36).slice(2, 10)}`;
     while (fs.existsSync(path.join(sessionDir(p), `${newId}.jsonl`))) {
       newId = `fork-${Math.random().toString(36).slice(2, 10)}`;
@@ -2455,6 +2456,29 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
       const msg = (e as Error).message;
       return c.json({ error: msg }, msg === "session not found" ? 404 : 400);
     }
+  });
+
+  // move a chat into a project, or out of one (project: null)
+  app.post("/v1/agent/sessions/:id/project", async (c) => {
+    const p = c.get("paths");
+    const body = await c.req.json<{ project?: unknown }>().catch(() => ({}) as { project?: unknown });
+    if (body.project !== null && typeof body.project !== "string") return c.json({ error: "project (project id or null) required" }, 400);
+    if (body.project !== null) {
+      try {
+        projects.projectLayout(p.root, body.project);
+      } catch (e) {
+        return c.json({ error: (e as Error).message }, e instanceof projects.ProjectError ? e.status : 400);
+      }
+    }
+    try {
+      moveSession(p, c.req.param("id"), body.project);
+    } catch (e) {
+      const msg = (e as Error).message;
+      return c.json({ error: msg }, msg === "session not found" ? 404 : 400);
+    }
+    // the system prompt carries the project section (instructions, memory, files)
+    evictAgents(c.get("user").username);
+    return c.json({ ok: true, project: body.project });
   });
 
   // ---------- compact: summarize the session, APPEND a compact marker ----------

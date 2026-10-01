@@ -193,7 +193,7 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
         const oid = await git.commitAll(p.root, username, `agent: edit ${rel}`, true);
         if (oid) committed = `, committed ${oid.slice(0, 8)}`;
       } catch (e) {
-        committed = `. Commit failed: ${(e as Error).message} — run git_commit to retry`;
+        committed = `. Commit failed: ${(e as Error).message} — retry with the git tool: "commit -m <message>"`;
       }
       const diff = fileDiff(rel, content, next);
       return textResult(`Edited ${rel} (${oldText.length}→${newText.length} chars)${committed}.`, {
@@ -292,7 +292,7 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
         const oid = await git.commitAll(p.root, username, `agent: write ${rel}`, true);
         if (oid) committed = `, committed ${oid.slice(0, 8)}`;
       } catch (e) {
-        committed = `. Commit failed: ${(e as Error).message} — run git_commit to retry`;
+        committed = `. Commit failed: ${(e as Error).message} — retry with the git tool: "commit -m <message>"`;
       }
       const diff = fileDiff(rel, before, content);
       return textResult(`Wrote ${rel} (${content.length} bytes)${committed}.`, {

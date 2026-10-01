@@ -209,13 +209,13 @@ apps/*/.project/files/
  * the built-in agent directly. No secrets: the file is git-tracked. Its job:
  * teach the file-first contract + how to drive the engine.
  */
-const AGENTS_MD_VERSION = 12;
+const AGENTS_MD_VERSION = 13;
 const USER_AGENTS_MD_BODY = `# Chrysalis workspace
 
 Everything here is files you can edit like code — this user's whole Chrysalis world. The engine hot-reloads as you save.
 
 ## Git (who commits what)
-- The repo is preconfigured (identity, reflog): an agent running on the host uses plain \`git add/commit/log/reflog\`; the built-in agent's browser sandbox has no git binary, so it commits through its git tools (git_status/git_log/git_commit/git_restore) on this same repo.
+- The repo is preconfigured (identity, reflog): an agent running on the host uses plain \`git add/commit/log/reflog\`; the built-in agent's browser sandbox has no git binary, so it commits through its \`git\` tool (status, diff, log, commit, restore, revert…) on this same repo.
 - Writes made through app HTTP routes auto-commit with the route in the message.
 - Your own direct edits stay pending until you commit them (\`git add -A && git commit\`); if an app request fires first, the engine commits them under an honest \`out-of-band: <files>\` label — nothing is lost, check \`git log\`.
 
@@ -223,6 +223,7 @@ Everything here is files you can edit like code — this user's whole Chrysalis 
 - \`apps/<id>/\` — installed apps: a React + tailwind web project with vite conventions (\`index.html\`, \`src/\`, \`package.json\`; built in the browser, \`vite.config.*\` is not run) + \`plugins/<id>/\` (backend ES modules) + \`data/\` (whatever the app stores). \`node_modules/\`/\`dist/\` are derived (outside git). Dependencies install and uninstall engine-side with lifecycle scripts disabled (the built-in agent's \`app_deps\` tool); the sandbox itself has no node or npm.
 - An app is free to be anything: a chat studio, a visual novel, a game, a tool. Each carries its own \`AGENTS.md\` and \`data/README.md\` (its field-shape map) — read those before editing that app.
 - \`plugins/<id>/\` — top-level always-on plugins (same format as app plugins).
+- \`projects/<name>/\` — the user's free projects (plugins, research, ideas), shown on the agent page beside the apps: \`PROJECT.md\` (instructions for chats in that project), \`project.json\` (title, default model), \`files/\` (reference uploads). An app's own project settings and uploads sit in \`apps/<id>/.project/\`. Uploads (\`files/\`) are outside git and the user's: read them, never write them.
 - \`providers.json\` — custom model endpoints. \`settings.json\` — activeApp etc. (the Settings UI owns it; agents do not read or edit it).
 - \`commands/\` — reusable prompts, one markdown file each. \`review.md\` is \`/review\` in the composer, and the first line is its description. Yours; the engine never writes here.
 - \`notes/\` — plans, specs and reference material, yours to create and keep. The engine never writes here and never deletes anything in it. Every file is listed for the agent by name and first line, so write one per topic with a first line that says what it covers, and read the relevant note before starting work in that area.

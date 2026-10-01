@@ -142,6 +142,14 @@ export interface SessionRenameRecord {
   title: string;
 }
 
+/** Move to another project, or out of one (null). Metadata only: the last
+ * record wins over the start record's project. */
+export interface SessionProjectRecord {
+  type: "project";
+  at: number;
+  project: string | null;
+}
+
 /** Archive toggle (metadata only): the last record wins. Archived sessions
  * leave the main sidebar list but keep their history. */
 export interface SessionArchiveRecord {
@@ -208,10 +216,11 @@ export function listSessions(p: UserPaths): SessionSummary[] {
         let firstUser: string | null = null;
         let archived = false;
         let project: string | null = null;
+        let started = false;
         for (const line of fs.readFileSync(full, "utf8").split("\n")) {
           if (!line.trim()) continue;
           try {
-            const r = JSON.parse(line) as SessionRunRecord | SessionRenameRecord | SessionStartRecord | SessionArchiveRecord;
+            const r = JSON.parse(line) as SessionRunRecord | SessionRenameRecord | SessionStartRecord | SessionArchiveRecord | SessionProjectRecord;
             if (r.type === "run") {
               runs++;
               lastAt = Math.max(lastAt ?? 0, r.at);
@@ -221,7 +230,11 @@ export function listSessions(p: UserPaths): SessionSummary[] {
               // finished run counts toward the run total
               lastAt = Math.max(lastAt ?? 0, r.at);
               if (firstUser === null && r.user) firstUser = r.user;
-              if (typeof r.project === "string" && PROJECT_ID.test(r.project)) project = r.project;
+              if (!started && typeof r.project === "string" && PROJECT_ID.test(r.project)) project = r.project;
+              started = true;
+            } else if (r.type === "project") {
+              // a move: not an activity, the chat keeps its place in the list
+              project = typeof r.project === "string" && PROJECT_ID.test(r.project) ? r.project : null;
             } else if (r.type === "rename") {
               title = r.title;
               lastAt = Math.max(lastAt ?? 0, r.at);
@@ -245,16 +258,41 @@ export function listSessions(p: UserPaths): SessionSummary[] {
 
 const PROJECT_ID = /^(app:[A-Za-z0-9][A-Za-z0-9_-]{0,63}|project:[a-z0-9][a-z0-9-]{0,47})$/;
 
-/** The project a session was started in, from its start record; null for a
- *  plain chat or a session that does not exist yet. */
+/** The project a session belongs to: the start record's, unless a later
+ *  move record says otherwise (last one wins). Null for a plain chat or a
+ *  session that does not exist yet. */
 export function sessionProject(p: UserPaths, sessionId: string): string | null {
+  let project: string | null = null;
+  let started = false;
+  let text: string;
   try {
-    const first = fs.readFileSync(sessionFile(p, sessionId), "utf8").split("\n", 1)[0] ?? "";
-    const r = JSON.parse(first) as Partial<SessionStartRecord>;
-    return r.type === "start" && typeof r.project === "string" && PROJECT_ID.test(r.project) ? r.project : null;
+    text = fs.readFileSync(sessionFile(p, sessionId), "utf8");
   } catch {
     return null;
   }
+  for (const line of text.split("\n")) {
+    // only metadata records can name a project; skip run lines unparsed
+    if (!line.includes('"type":"start"') && !line.includes('"type":"project"')) continue;
+    try {
+      const r = JSON.parse(line) as Partial<SessionStartRecord> | Partial<SessionProjectRecord>;
+      if (r.type === "start" && !started) {
+        started = true;
+        if (typeof r.project === "string" && PROJECT_ID.test(r.project)) project = r.project;
+      } else if (r.type === "project") {
+        project = typeof r.project === "string" && PROJECT_ID.test(r.project) ? r.project : null;
+      }
+    } catch { /* skip bad line */ }
+  }
+  return project;
+}
+
+/** Move a session into a project, or out of one (null). The caller checks
+ *  the project exists. Throws when the session file doesn't exist. */
+export function moveSession(p: UserPaths, sessionId: string, project: string | null): void {
+  const file = sessionFile(p, sessionId); // validates the id shape
+  if (!fs.existsSync(file)) throw new Error("session not found");
+  if (project !== null && !PROJECT_ID.test(project)) throw new Error("invalid project id");
+  fs.appendFileSync(file, JSON.stringify({ type: "project", at: Date.now(), project } satisfies SessionProjectRecord) + "\n", "utf8");
 }
 
 /** Append a rename record (metadata for the sidebar — excluded from the
@@ -320,7 +358,7 @@ export class UserAgent {
     const isAdmin = users.get(username)?.role === "admin";
     const sessionId = opts.sessionId ?? new Date().toISOString().slice(0, 10) + "-" + Math.random().toString(36).slice(2, 8);
     const sFile = sessionFile(paths, sessionId);
-    // an existing session's project is fixed by its start record
+    // an existing session keeps the project its records name (start or move)
     let project = fs.existsSync(sFile) ? sessionProject(paths, sessionId) : (opts.project ?? null);
     if (project) {
       try {

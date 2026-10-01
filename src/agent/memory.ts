@@ -31,6 +31,7 @@ import * as git from "../git.js";
 import { resourcesDir } from "../install.js";
 import type { UserPaths } from "../paths.js";
 import type { AgentToolOptions } from "./tools.js";
+import { matchCount, tokens } from "./text-match.js";
 
 export const GLOBAL_MEMORY = "memory/MEMORY.md";
 export const GLOBAL_SKILLS = "skills";
@@ -106,30 +107,184 @@ export function normalizeEntry(text: string): string {
   return text.replace(/\s+/g, " ").trim().slice(0, ENTRY_MAX);
 }
 
-/** Append an entry (optionally replacing an existing one) and return the line written. */
-export function appendEntry(root: string, scope: MemoryScope, text: string, replaces?: string): { line: string; replaced?: string } {
+// ---------- topics ----------
+// MEMORY.md is the core: short, always in the prompt. Topic files beside it
+// (memory/<topic>.md, apps/<id>/.memory/<topic>.md, …) are listed by name and
+// read on demand, so memory can grow without growing every request.
+
+/** A topic file's name: lowercase letters, digits and dashes. */
+export const MEMORY_TOPIC = /^[a-z0-9][a-z0-9-]{0,47}$/;
+/** The core file the agent may grow to; past it, new entries go to a topic. */
+export const CORE_MEMORY_CAP = 4000;
+
+const memoryDirOf = (scope: MemoryScope): string => path.posix.dirname(scope.file);
+
+/** The file of one topic in a scope; throws on a bad name. */
+export function topicFile(scope: MemoryScope, topic: string): string {
+  const t = topic.trim();
+  // "memory" would be MEMORY.md itself on a case-insensitive disk (Windows)
+  if (!MEMORY_TOPIC.test(t) || t === "memory") throw new Error(`topic must be lowercase letters, digits and dashes (max 48), not "memory"; got "${topic}"`);
+  return `${memoryDirOf(scope)}/${t}.md`;
+}
+
+/** The core file, or a topic's file when a topic is named. */
+export function memoryFile(scope: MemoryScope, topic?: string | null): string {
+  return topic ? topicFile(scope, topic) : scope.file;
+}
+
+export interface MemoryTopic {
+  topic: string;
+  file: string;
+  /** The heading when someone gave it more than the topic's name. */
+  title?: string;
+  entries: number;
+}
+
+export function listTopics(root: string, scope: MemoryScope): MemoryTopic[] {
+  const dir = memoryDirOf(scope);
+  let names: string[];
+  try {
+    names = fs.readdirSync(path.join(root, dir)).filter((n) => n.endsWith(".md")).sort();
+  } catch {
+    return [];
+  }
+  const out: MemoryTopic[] = [];
+  for (const n of names) {
+    const topic = n.slice(0, -3);
+    if (!MEMORY_TOPIC.test(topic) || topic === "memory") continue;
+    const file = `${dir}/${n}`;
+    const body = readText(root, file);
+    const heading = /^#\s+(.+)$/m.exec(body)?.[1]?.trim();
+    out.push({ topic, file, ...(heading && heading !== topic ? { title: heading } : {}), entries: entryLines(body).length });
+  }
+  return out;
+}
+
+const entryLines = (body: string): string[] => body.split("\n").filter((l) => l.startsWith("- "));
+
+/** The index lines the prompt shows for a scope's topics. */
+export function topicIndex(root: string, scope: MemoryScope): string {
+  return listTopics(root, scope)
+    .map((t) => `- ${t.file}${t.title ? ` — ${t.title}` : ""} (${t.entries} ${t.entries === 1 ? "entry" : "entries"})`)
+    .join("\n");
+}
+
+/** Every file of a scope that holds entries: the core, then the topics. */
+function scopeFiles(root: string, scope: MemoryScope): string[] {
+  return [scope.file, ...listTopics(root, scope).map((t) => t.file)];
+}
+
+function headerFor(scope: MemoryScope, topic?: string | null): string {
+  const owner = scope.appId ?? scope.projectName;
+  if (topic) return `# ${topic}\n\n`;
+  return owner ? `# Project memory: ${owner}\n\n` : "# Memory\n\n";
+}
+
+/** Add one stored line at the end of a file, creating it with its heading. */
+function appendLine(root: string, file: string, header: string, line: string): void {
+  let body = readText(root, file);
+  if (!body) body = header;
+  // a blank line keeps the heading apart from the first entry
+  body = body.replace(/\n*$/, body.includes("\n- ") ? "\n" : "\n\n") + line + "\n";
+  fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+  fs.writeFileSync(path.join(root, file), body, "utf8");
+}
+
+/** Remove the first entry line the test picks; a topic left with no entries
+ *  is deleted (the core file always stays). */
+function removeLine(root: string, scope: MemoryScope, file: string, pick: (line: string) => boolean): string | undefined {
+  const lines = readText(root, file).split("\n");
+  const at = lines.findIndex((l) => l.startsWith("- ") && pick(l));
+  if (at === -1) return undefined;
+  const [removed] = lines.splice(at, 1);
+  const abs = path.join(root, file);
+  if (file !== scope.file && !lines.some((l) => l.startsWith("- "))) fs.rmSync(abs, { force: true });
+  else fs.writeFileSync(abs, lines.join("\n"), "utf8");
+  return removed;
+}
+
+/** Append an entry (optionally replacing an existing one anywhere in the
+ *  scope) to the core or to a topic, and return the line written. */
+export function appendEntry(
+  root: string,
+  scope: MemoryScope,
+  text: string,
+  replaces?: string,
+  topic?: string | null,
+): { line: string; file: string; replaced?: string } {
   const entry = normalizeEntry(text);
   if (!entry) throw new Error("the entry is empty");
-  const abs = path.join(root, scope.file);
-  let body = readText(root, scope.file);
-  const owner = scope.appId ?? scope.projectName;
-  if (!body) body = owner ? `# Project memory: ${owner}\n\n` : "# Memory\n\n";
+  const file = memoryFile(scope, topic);
   let replaced: string | undefined;
   if (replaces && replaces.trim()) {
     const needle = replaces.trim().toLowerCase();
-    const lines = body.split("\n");
-    const at = lines.findIndex((l) => l.startsWith("- ") && l.toLowerCase().includes(needle));
-    if (at === -1) throw new Error(`no entry in ${scope.file} contains "${replaces.trim()}"`);
-    replaced = lines[at];
-    lines.splice(at, 1);
-    body = lines.join("\n");
+    // the target file first: replacing in place is the common case
+    for (const f of [file, ...scopeFiles(root, scope).filter((x) => x !== file)]) {
+      replaced = removeLine(root, scope, f, (l) => l.toLowerCase().includes(needle));
+      if (replaced) break;
+    }
+    if (!replaced) throw new Error(`no entry in ${scope.label} contains "${replaces.trim()}"`);
   }
   const line = `- ${today()}: ${entry}`;
-  // a blank line keeps the heading apart from the first entry
-  body = body.replace(/\n*$/, body.includes("\n- ") ? "\n" : "\n\n") + line + "\n";
-  fs.mkdirSync(path.dirname(abs), { recursive: true });
-  fs.writeFileSync(abs, body, "utf8");
-  return { line, ...(replaced ? { replaced } : {}) };
+  appendLine(root, file, headerFor(scope, topic), line);
+  return { line, file, ...(replaced ? { replaced } : {}) };
+}
+
+/** Whether one more entry would push the core past its cap. */
+export function coreIsFull(root: string, scope: MemoryScope, entry: string): boolean {
+  return readText(root, scope.file).length + normalizeEntry(entry).length + 16 > CORE_MEMORY_CAP;
+}
+
+/** Move one entry line (exact match) between the core and a topic, keeping its date. */
+export function moveEntry(root: string, scope: MemoryScope, line: string, from: string | null, to: string | null): string {
+  const src = memoryFile(scope, from);
+  const dst = memoryFile(scope, to);
+  if (src === dst) throw new Error("the entry is already there");
+  if (!removeLine(root, scope, src, (l) => l === line)) throw new Error("that entry is not in this memory (it may have changed)");
+  appendLine(root, dst, headerFor(scope, to), line);
+  return dst;
+}
+
+export interface MemoryHit {
+  scope: string;
+  file: string;
+  date?: string;
+  text: string;
+  score: number;
+}
+
+/** The scopes whose memory exists: global, then apps, then free projects. */
+function memoryScopes(root: string): string[] {
+  const out = ["global"];
+  for (const id of subdirs(root, "apps")) if (fs.existsSync(path.join(root, "apps", id, ".memory"))) out.push(`app:${id}`);
+  for (const n of subdirs(root, "projects")) if (PROJECT_NAME.test(n) && fs.existsSync(path.join(root, "projects", n, ".memory"))) out.push(`project:${n}`);
+  return out;
+}
+
+/** Entries of every file in reach that share words with the query, ranked by
+ *  how many distinct query words they contain, newest first among equals. */
+export function searchMemory(root: string, query: string, scopeRaw?: string, limit = 20): MemoryHit[] {
+  const q = tokens(query);
+  if (!q.length) throw new Error("the query has no searchable words (only common words like \"що\", \"the\")");
+  const hits: MemoryHit[] = [];
+  for (const key of scopeRaw ? [scopeRaw] : memoryScopes(root)) {
+    let scope: MemoryScope;
+    try {
+      scope = resolveScope(root, key);
+    } catch (e) {
+      if (scopeRaw) throw e;
+      continue; // an app folder with memory but no manifest
+    }
+    for (const file of scopeFiles(root, scope)) {
+      for (const l of entryLines(readText(root, file))) {
+        const m = /^- (\d{4}-\d{2}-\d{2}): (.*)$/.exec(l);
+        const text = m ? m[2]! : l.slice(2);
+        const score = matchCount(q, text);
+        if (score) hits.push({ scope: key === "" ? "global" : key, file, ...(m ? { date: m[1]! } : {}), text, score });
+      }
+    }
+  }
+  return hits.sort((a, b) => b.score - a.score || (b.date ?? "").localeCompare(a.date ?? "")).slice(0, limit);
 }
 
 // ---------- skills ----------
@@ -296,18 +451,21 @@ const COMPACT_MEMORY_CHARS = 2000;
 export function memoryPromptSection(root: string, opts: { compact?: boolean } = {}): string {
   const memory = readText(root, GLOBAL_MEMORY).trim();
   const skills = listSkills(root);
+  const topics = topicIndex(root, resolveScope(root, "global"));
+  const topicPart = `\n\n## Memory topics (read_file one when it bears on the task)\n${topics || "(none yet)"}`;
   if (opts.compact) {
     return `
 
 # Memory and skills
 ## What you remember (${GLOBAL_MEMORY})
-${memory ? clipMemory(memory, COMPACT_MEMORY_CHARS) : "(nothing yet)"}
+${memory ? clipMemory(memory, COMPACT_MEMORY_CHARS) : "(nothing yet)"}${topicPart}
 
 ## Skills (skill_load <name> before a task one covers)
 ${skills.length ? skills.map(shortSkillLine).join("\n") : "(none yet)"}
 
 ## Rules
-- Remember durable things (a preference, a decision, a gotcha that cost time) with memory_propose, once, at a natural stopping point. No trivia, no secrets. Never say it is saved until the tool says so.
+- Remember durable things (a preference, a decision, a gotcha that cost time) with memory_propose, once, at a natural stopping point. No trivia, no secrets. Never say it is saved until the tool says so. Core memory is for facts that matter in every chat; anything else goes to a topic (topic: "lowercase-dashes").
+- memory_search finds past entries in every memory file by words; use it before saying you do not remember.
 - Memory and skill folders change only through the tools; the user confirms each change. A project's memory and skills show the first time you touch that app.
 - When a task took several attempts or the user corrected you twice, offer a skill: load skill-authoring first.`;
   }
@@ -317,7 +475,7 @@ ${skills.length ? skills.map(shortSkillLine).join("\n") : "(none yet)"}
 You keep a long-term memory across sessions and can grow reusable skills. Both are files the user owns; you change them only through the tools below, and the user confirms every change.
 
 ## What you remember (${GLOBAL_MEMORY})
-${memory ? clipMemory(memory) : "(nothing yet)"}
+${memory ? clipMemory(memory) : "(nothing yet)"}${topicPart}
 
 ## Skills
 ${skills.length ? skills.map(skillLine).join("\n") : "(none yet)"}
@@ -325,6 +483,7 @@ ${skills.length ? skills.map(skillLine).join("\n") : "(none yet)"}
 ## Rules
 - A project's memory (${appMemoryPath("<id>")}) and its skills are shown to you automatically the first time you touch that app in a session. A chat opened inside a project has that project's section below instead.
 - To remember something durable — a user preference, a decision, where a project stands, a gotcha that cost real time — call memory_propose with scope "global", "app:<id>" or "project:<name>". Never say something is saved until the tool says so. Do not propose trivia, one-off details, or secrets (keys, passwords, tokens).
+- Core memory (MEMORY.md, capped) holds what matters in every chat. Everything else goes to a topic file (memory_propose topic). memory_search finds entries in all memory files by words; search before saying you do not remember.
 - After substantial work, at a natural stopping point, propose what is worth keeping — once, not after every message. When an entry is outdated, pass replaces with a phrase from the old entry.
 - Before a task a skill covers, call skill_load and follow it.
 - Skills are how this workspace gets better at its work. Propose one (skill_propose) when a task took several attempts and you now know the path, when the user corrected you the same way twice, or when they ask. When a skill you followed was wrong or missed a step, fix it with skill_edit right after the task. Load skill-authoring first. Propose once, at a natural stopping point, with one line on what it improves; the user saves or skips it.
@@ -352,9 +511,11 @@ export function projectContextFor(root: string, appId: string): string | null {
   if (!fs.existsSync(path.join(root, "apps", appId, "manifest.json"))) return null;
   const memory = readText(root, appMemoryPath(appId)).trim();
   const skills = listSkills(root, appId);
-  if (!memory && !skills.length) return null;
+  const topics = topicIndex(root, resolveScope(root, `app:${appId}`));
+  if (!memory && !skills.length && !topics) return null;
   const parts = [`[Project context for apps/${appId} — shown once per session]`];
   if (memory) parts.push(`Memory (${appMemoryPath(appId)}):\n${clipMemory(memory, MEMORY_CHARS, appMemoryPath(appId))}`);
+  if (topics) parts.push(`Memory topics of this app (read_file one when needed):\n${topics}`);
   if (skills.length) parts.push(`Skills of this app (load with skill_load):\n${skills.map(skillLine).join("\n")}`);
   return parts.join("\n\n");
 }
@@ -415,32 +576,59 @@ export function buildMemoryTools(username: string, p: UserPaths, opts: Pick<Agen
     name: "memory_propose",
     label: "Propose a memory entry",
     description:
-      'Propose one entry for long-term memory. The user sees it and confirms, edits or skips it; it is saved only if they agree. scope: "global" (about the user and everything), "app:<app-id>" (one app project) or "project:<name>" (one free project). One self-contained sentence, specific (names, paths, dates). replaces: a phrase from an existing entry this one supersedes.',
+      'Propose one entry for long-term memory. The user sees it and confirms, edits or skips it; it is saved only if they agree. scope: "global" (about the user and everything), "app:<app-id>" (one app project) or "project:<name>" (one free project). One self-contained sentence, specific (names, paths, dates). topic: a lowercase-dashes topic file; omit only for core facts that matter in every chat. replaces: a phrase from an existing entry this one supersedes (with topic, this moves it).',
     parameters: Type.Object({
-      scope: Type.String({ description: '"global", "app:<app-id>" or "project:<name>"' }),
-      entry: Type.String({ description: "The entry: one self-contained sentence" }),
-      replaces: Type.Optional(Type.String({ description: "A phrase identifying an existing entry to replace" })),
+      scope: Type.String(),
+      entry: Type.String(),
+      topic: Type.Optional(Type.String()),
+      replaces: Type.Optional(Type.String()),
     }),
     async execute(_id, params) {
-      const { scope: rawScope, entry, replaces } = params as { scope?: string; entry: string; replaces?: string };
+      const { scope: rawScope, entry, replaces } = params as { scope?: string; entry: string; replaces?: string; topic?: string };
+      const topic = (params as { topic?: string }).topic?.trim() || null;
       const scope = resolveScope(root, rawScope);
       const proposed = normalizeEntry(entry);
       if (!proposed) throw new Error("the entry is empty");
+      const file = memoryFile(scope, topic);
+      // the core rides every request: past its cap, the agent picks a topic
+      if (!topic && !replaces?.trim() && coreIsFull(root, scope, proposed)) {
+        const existing = listTopics(root, scope).map((t) => t.topic);
+        return text(
+          `Not proposed: ${scope.file} is at its size cap (${CORE_MEMORY_CAP} characters). Propose it again with a topic${existing.length ? ` (existing: ${existing.join(", ")}; or a new one)` : " (a new lowercase-dashes name)"}, or replace an outdated core entry.`,
+        );
+      }
       if (!opts.ask) return text("Not saved: the user is not available to confirm memory entries right now.");
       const answer = (
         await opts.ask({
-          question: `Save to ${scope.label}?${replaces ? ` It replaces the entry containing "${replaces.trim()}".` : ""} Type a corrected version to save that instead.`,
+          question: `Save to ${scope.label}${topic ? `, topic "${topic}"` : ""}?${replaces ? ` It replaces the entry containing "${replaces.trim()}".` : ""} Type a corrected version to save that instead.`,
           options: ["Save", "Skip"],
           detail: proposed,
         })
       ).trim();
       if (!answer || answer === "Skip" || answer === "(no answer)") return text("Not saved: the user skipped this entry. Do not propose it again.");
       const final = answer === "Save" ? proposed : answer;
-      const { line, replaced } = appendEntry(root, scope, final, replaces);
-      await git.commitAll(root, username, `memory: ${scope.label}`, true).catch(() => undefined);
+      const { line, replaced } = appendEntry(root, scope, final, replaces, topic);
+      await git.commitAll(root, username, `memory: ${scope.label}${topic ? ` (${topic})` : ""}`, true).catch(() => undefined);
       return text(
-        `Saved to ${scope.file}: ${line}${replaced ? `\nReplaced: ${replaced}` : ""}${final !== proposed ? "\n(The user rewrote the entry; the saved text is theirs.)" : ""}`,
+        `Saved to ${file}: ${line}${replaced ? `\nReplaced: ${replaced}` : ""}${final !== proposed ? "\n(The user rewrote the entry; the saved text is theirs.)" : ""}`,
       );
+    },
+  };
+
+  const memorySearch: AgentTool = {
+    name: "memory_search",
+    label: "Search memory",
+    description:
+      'Search every memory entry in reach (core, topics, apps, projects) by words; Ukrainian and Russian inflections and apostrophes match. Returns the best entries with their file and date. scope narrows it to "global", "app:<id>" or "project:<name>".',
+    parameters: Type.Object({
+      query: Type.String({ description: "Key words, e.g. a name or a subject" }),
+      scope: Type.Optional(Type.String()),
+    }),
+    async execute(_id, params) {
+      const { query, scope } = params as { query: string; scope?: string };
+      const hits = searchMemory(root, String(query ?? ""), scope?.trim() || undefined);
+      if (!hits.length) return text(`Nothing in memory matches "${query}".`);
+      return text(hits.map((h) => `${h.file}${h.date ? ` (${h.date})` : ""}: ${h.text}`).join("\n"));
     },
   };
 
@@ -564,19 +752,38 @@ export function buildMemoryTools(username: string, p: UserPaths, opts: Pick<Agen
     },
   };
 
-  return [memoryPropose, skillLoad, skillPropose, skillEdit];
+  return [memoryPropose, memorySearch, skillLoad, skillPropose, skillEdit];
 }
 
 // ---------- the user's own edits (the memory panel on the agent page) ----------
 // These are the user acting on their own files, so no confirmation card.
 
 /** Every project (app or free) that has a memory, with its text. */
-export function listAppMemories(root: string): { id: string; scope: string; file: string; text: string }[] {
-  const apps = subdirs(root, "apps").map((id) => ({ id, scope: `app:${id}`, file: appMemoryPath(id), text: readText(root, appMemoryPath(id)) }));
+export interface ScopeMemory {
+  file: string;
+  text: string;
+  topics: { topic: string; file: string; title?: string; text: string }[];
+}
+
+/** A scope's core text and its topics, for the panel. */
+export function scopeMemory(root: string, scope: MemoryScope): ScopeMemory {
+  return {
+    file: scope.file,
+    text: readText(root, scope.file),
+    topics: listTopics(root, scope).map((t) => ({ topic: t.topic, file: t.file, ...(t.title ? { title: t.title } : {}), text: readText(root, t.file) })),
+  };
+}
+
+export function listAppMemories(root: string): ({ id: string; scope: string } & ScopeMemory)[] {
+  const apps = subdirs(root, "apps").map((id) => ({ id, scope: `app:${id}`, file: appMemoryPath(id) }));
   const free = subdirs(root, "projects")
     .filter((n) => PROJECT_NAME.test(n))
-    .map((n) => ({ id: n, scope: `project:${n}`, file: projectMemoryPath(n), text: readText(root, projectMemoryPath(n)) }));
-  return [...apps, ...free].filter((m) => m.text.trim()).sort((a, b) => a.id.localeCompare(b.id));
+    .map((n) => ({ id: n, scope: `project:${n}`, file: projectMemoryPath(n) }));
+  const shell = (file: string): MemoryScope => ({ file, label: "", skillsDir: "" });
+  return [...apps, ...free]
+    .map((m) => ({ ...m, ...scopeMemory(root, shell(m.file)) }))
+    .filter((m) => m.text.trim() || m.topics.length)
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export function readMemory(root: string, scope: MemoryScope): string {
@@ -584,13 +791,10 @@ export function readMemory(root: string, scope: MemoryScope): string {
 }
 
 /** Remove one entry line (exact match); throws when it is not there. */
-export function forgetEntry(root: string, scope: MemoryScope, line: string): void {
-  const body = readText(root, scope.file);
-  const lines = body.split("\n");
-  const at = lines.indexOf(line);
-  if (at === -1 || !line.startsWith("- ")) throw new Error("that entry is not in this memory (it may have changed)");
-  lines.splice(at, 1);
-  fs.writeFileSync(path.join(root, scope.file), lines.join("\n"), "utf8");
+export function forgetEntry(root: string, scope: MemoryScope, line: string, topic?: string | null): void {
+  if (!line.startsWith("- ") || !removeLine(root, scope, memoryFile(scope, topic), (l) => l === line)) {
+    throw new Error("that entry is not in this memory (it may have changed)");
+  }
 }
 
 function skillFile(root: string, scopeRaw: string, name: string): string {

@@ -2606,7 +2606,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
   app.get("/v1/agent/memory", (c) => {
     const root = userPaths(dataDir, c.get("user").username).root;
     return c.json({
-      global: { file: agentMemory.GLOBAL_MEMORY, text: agentMemory.readMemory(root, agentMemory.resolveScope(root, "global")) },
+      global: agentMemory.scopeMemory(root, agentMemory.resolveScope(root, "global")),
       apps: agentMemory.listAppMemories(root),
       skills: agentMemory.listSkills(root),
     });
@@ -2615,12 +2615,12 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
   app.post("/v1/agent/memory", async (c) => {
     const u = c.get("user");
     const root = userPaths(dataDir, u.username).root;
-    const body = await c.req.json<{ scope?: string; entry?: string }>().catch(() => ({}) as { scope?: string; entry?: string });
+    const body = await c.req.json<{ scope?: string; entry?: string; topic?: string | null }>().catch(() => ({}) as { scope?: string; entry?: string; topic?: string | null });
     try {
       const scope = agentMemory.resolveScope(root, body.scope);
-      const { line } = agentMemory.appendEntry(root, scope, String(body.entry ?? ""));
+      const { line, file } = agentMemory.appendEntry(root, scope, String(body.entry ?? ""), undefined, body.topic ?? null);
       await git.commitAll(root, u.username, `memory: add to ${scope.label}`).catch(() => undefined);
-      return c.json({ ok: true, line });
+      return c.json({ ok: true, line, file });
     } catch (e) {
       return memoryError(c, e);
     }
@@ -2629,12 +2629,38 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
   app.post("/v1/agent/memory/forget", async (c) => {
     const u = c.get("user");
     const root = userPaths(dataDir, u.username).root;
-    const body = await c.req.json<{ scope?: string; line?: string }>().catch(() => ({}) as { scope?: string; line?: string });
+    const body = await c.req.json<{ scope?: string; line?: string; topic?: string | null }>().catch(() => ({}) as { scope?: string; line?: string; topic?: string | null });
     try {
       const scope = agentMemory.resolveScope(root, body.scope);
-      agentMemory.forgetEntry(root, scope, String(body.line ?? ""));
+      agentMemory.forgetEntry(root, scope, String(body.line ?? ""), body.topic ?? null);
       await git.commitAll(root, u.username, `memory: forget from ${scope.label}`).catch(() => undefined);
       return c.json({ ok: true });
+    } catch (e) {
+      return memoryError(c, e);
+    }
+  });
+
+  // from/to: a topic name, or null for the core file (MEMORY.md)
+  app.post("/v1/agent/memory/move", async (c) => {
+    const u = c.get("user");
+    const root = userPaths(dataDir, u.username).root;
+    const body = await c.req
+      .json<{ scope?: string; line?: string; from?: string | null; to?: string | null }>()
+      .catch(() => ({}) as { scope?: string; line?: string; from?: string | null; to?: string | null });
+    try {
+      const scope = agentMemory.resolveScope(root, body.scope);
+      const file = agentMemory.moveEntry(root, scope, String(body.line ?? ""), body.from ?? null, body.to ?? null);
+      await git.commitAll(root, u.username, `memory: move in ${scope.label}`).catch(() => undefined);
+      return c.json({ ok: true, file });
+    } catch (e) {
+      return memoryError(c, e);
+    }
+  });
+
+  app.get("/v1/agent/memory/search", (c) => {
+    const root = userPaths(dataDir, c.get("user").username).root;
+    try {
+      return c.json({ hits: agentMemory.searchMemory(root, c.req.query("q") ?? "", c.req.query("scope") || undefined, 50) });
     } catch (e) {
       return memoryError(c, e);
     }

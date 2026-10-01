@@ -43,7 +43,7 @@ export function isSmallWindow(mode: SmallModelMode, contextWindow: number | null
 export type ToolGroup = "app" | "skills" | "shell" | "admin" | "mcp";
 
 /** Always sent in small mode. */
-export const CORE_TOOLS: ReadonlySet<string> = new Set(["read_file", "write_file", "edit_file", "grep", "git", "ask_user", "skill_load", "memory_propose", "tools_enable"]);
+export const CORE_TOOLS: ReadonlySet<string> = new Set(["read_file", "write_file", "edit_file", "grep", "git", "ask_user", "skill_load", "memory_propose", "memory_search", "tools_enable"]);
 
 const GROUP_OF: Record<string, ToolGroup> = {
   app_create: "app",
@@ -88,7 +88,9 @@ const COMPACT_DESCRIPTIONS: Record<string, string> = {
   checkpoint: "Save or restore an app's code: create before risky work, list, restore (asks the user). data/ is never touched.",
   skill_propose: "Propose a new skill or a full rewrite; the user saves or skips it. Load skill-authoring first.",
   skill_edit: "Change part of a skill: exact old text to new text; the user saves or skips it.",
-  memory_propose: "Propose a memory entry (scope global, app:<id> or project:<name>); the user confirms. replaces: a phrase from the outdated entry.",
+  memory_propose:
+    "Propose a memory entry (scope global, app:<id> or project:<name>); the user confirms. topic: a lowercase-dashes topic file; omit for core facts. replaces: a phrase from the outdated entry.",
+  memory_search: "Search all memory entries by words (inflections match). scope narrows it.",
 };
 
 /** The tools the model is sent this step. */

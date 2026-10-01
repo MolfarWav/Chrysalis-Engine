@@ -116,8 +116,8 @@ describe("what a small model is sent", () => {
     expect(names(s!)).not.toContain("tools_enable");
     // no shell on this instance: no bash schema either
     expect(names(s!)).not.toContain("bash");
-    // the safe trims hold the full prompt under what it was (about 9k)
-    expect(size(s!)).toBeLessThan(8_600);
+    // the safe trims pay for memory_search: still under the 9.0k it was before both
+    expect(size(s!)).toBeLessThan(9_000);
   });
 
   it("the setting overrides the window both ways", async () => {

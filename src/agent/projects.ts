@@ -26,6 +26,8 @@ import {
   listSkills,
   PROJECT_NAME,
   projectMemoryPath,
+  resolveScope,
+  topicIndex,
   type SkillInfo,
 } from "./memory.js";
 
@@ -425,6 +427,12 @@ export function projectPromptSection(root: string, id: string): string {
   }
   const mem = d.memory.trim();
   if (mem) parts.push(`## Memory (${l.memory})\n${clipMemory(mem, PROMPT_MEMORY, l.memory)}`);
+  try {
+    const topics = topicIndex(root, resolveScope(root, l.scope));
+    if (topics) parts.push(`## Memory topics of this project (read_file one when needed)\n${topics}`);
+  } catch {
+    /* the scope no longer resolves: no topics to list */
+  }
   const own = d.skills.filter((s) => s.scope === l.scope);
   if (own.length) parts.push(`## Skills of this project (load with skill_load)\n${own.map((s) => `- ${s.name}: ${s.description}`).join("\n")}`);
   if (d.fileList.length) {

@@ -75,4 +75,8 @@
   - Fixed on the way: `bun run typecheck` failed since `a93d197` (test imported `client-agent/src/lib/utils.ts`, which uses DOM types). `shortModelName` moved to `client-agent/src/lib/model-name.ts`, re-exported from utils.
   - Session containers ship Bun 1.3.14; the project needs 1.4.0 (lockfile format). `npm i -g bun@1.4.0` gives a working binary.
   - `main` now carries the fork (it was upstream 1.0.2). The Windows launcher still follows the newest `claude/*` branch, not `main`.
+- Closed with the user (2026-10-01), do not reopen:
+  - UI redesign (session "UI переробка та концепти", directions A-D): dropped here. The user redesigns with Hermes Agent (Sonnet) on the desktop and prefers its design. Do not start UI redesign work in this repo unless asked.
+  - Release 0.1.0 is this project's first release; its GitHub title should read "Molfar.Vertep 0.1.0" (the user edits it; update checks read `tag_name`, not the title).
+  - The five questions left by session "GitChange #3" (handoff) are all answered and shipped in 0.1.0.
 - Next (handed off): five agent tools for 0.2.0: `.fork/handoff/agent-tools/HANDOFF.md`.

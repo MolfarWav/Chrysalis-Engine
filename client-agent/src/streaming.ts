@@ -1,3 +1,16 @@
+/** One choice on an ask_user card (the engine always sends objects). */
+export interface AskOption {
+  label: string
+  description?: string
+  recommended?: boolean
+}
+
+export interface AskQuestion {
+  question: string
+  options?: AskOption[]
+  multiSelect?: boolean
+}
+
 export interface StreamEvent {
   type: "text" | "thinking" | "thinking_end" | "tool_start" | "tool_end" | "ask_user" | "ask_user_done" | "autocompact"
   id?: string
@@ -10,7 +23,9 @@ export interface StreamEvent {
   diff?: string
   ms?: number
   question?: string
-  options?: string[]
+  options?: AskOption[]
+  multiSelect?: boolean
+  questions?: AskQuestion[]
   detail?: string
 }
 

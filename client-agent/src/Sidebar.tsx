@@ -1,14 +1,14 @@
 // The sidebar: new chat, search, projects with their chats, then the chats
 // that belong to no project. Every chat row is the thread list's own item, so
 // rename, archive, delete and the running spinner work the same everywhere.
-import { ThreadListItem, ThreadListArchived, ThreadListItemGroups, ThreadListSearch } from "@/components/assistant-ui/elements/thread-list.aui"
+import { CHAT_DRAG_TYPE, ThreadListItem, ThreadListArchived, ThreadListItemGroups, ThreadListSearch } from "@/components/assistant-ui/elements/thread-list.aui"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import { ThreadListPrimitive, useAuiState } from "@assistant-ui/react"
 import { AppWindow, CaretRight, Folder, Plus } from "@phosphor-icons/react"
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react"
 import { projectsApi, type ProjectSummary } from "./api"
 import { currentProjectId, useAgent } from "./store"
 
@@ -126,6 +126,33 @@ function NewProject(): ReactNode {
   )
 }
 
+/** Drop target for a dragged chat row: moves the chat into `project` (null: out
+ *  of any project). `over` lights the target while a chat hovers it. */
+function useChatDrop(project: string | null) {
+  const [over, setOver] = useState(false)
+  const props = {
+    onDragOver: (e: DragEvent) => {
+      if (!e.dataTransfer.types.includes(CHAT_DRAG_TYPE)) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = "move"
+      setOver(true)
+    },
+    onDragLeave: (e: DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false)
+    },
+    onDrop: (e: DragEvent) => {
+      setOver(false)
+      const id = e.dataTransfer.getData(CHAT_DRAG_TYPE)
+      if (!id) return
+      e.preventDefault()
+      const { sessions, move } = useAgent.getState()
+      const from = sessions.find((x) => x.sessionId === id)?.project ?? null
+      if (from !== project) void move(id, project)
+    },
+  }
+  return { over, props }
+}
+
 function ProjectRow({ project, query, expanded, onToggle, indices, ids }: {
   project: ProjectSummary
   query: string
@@ -137,8 +164,9 @@ function ProjectRow({ project, query, expanded, onToggle, indices, ids }: {
   const active = useAgent((s) => s.view.kind === "project" && s.view.id === project.id)
   const openProject = useAgent((s) => s.openProject)
   const open = query ? indices.length > 0 : expanded
+  const drop = useChatDrop(project.id)
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className={cn("flex flex-col gap-0.5 rounded-md", drop.over && "bg-muted/60 ring-ring/50 ring-1")} {...drop.props}>
       <div className={cn("hover:bg-muted group flex h-8 items-center gap-0.5 rounded-md pe-2 transition-colors", active && "bg-muted")}>
         <button
           type="button"
@@ -224,6 +252,7 @@ export function Sidebar(): ReactNode {
     return out
   }, [threadIds, projectOf, matches])
 
+  const plainDrop = useChatDrop(null)
   const anyHit = threadIds.some((id) => matches(id))
   const plainHit = threadIds.some((id) => plain(id) && matches(id))
 
@@ -261,12 +290,14 @@ export function Sidebar(): ReactNode {
       ))}
       {!projects.length ? <div className="text-muted-foreground px-2.5 py-1 text-xs">No projects yet</div> : null}
 
-      {!query || plainHit ? (
-        <div className="text-muted-foreground ps-2.5 pt-3 pb-1 text-[11px] font-medium tracking-wider uppercase">Chats</div>
-      ) : null}
-      <div className="flex flex-col gap-0.5">
-        <ThreadListItemGroups searchQuery={search} include={plain} emptyLabel={false} />
-        {query && !anyHit ? <div className="text-muted-foreground px-2.5 py-2 text-sm">No chats found</div> : null}
+      <div className={cn("flex flex-col gap-0.5 rounded-md", plainDrop.over && "bg-muted/60 ring-ring/50 ring-1")} {...plainDrop.props}>
+        {!query || plainHit ? (
+          <div className="text-muted-foreground ps-2.5 pt-3 pb-1 text-[11px] font-medium tracking-wider uppercase">Chats</div>
+        ) : null}
+        <div className="flex min-h-8 flex-col gap-0.5">
+          <ThreadListItemGroups searchQuery={search} include={plain} emptyLabel={false} />
+          {query && !anyHit ? <div className="text-muted-foreground px-2.5 py-2 text-sm">No chats found</div> : null}
+        </div>
       </div>
       <ThreadListArchived />
     </ThreadListPrimitive.Root>

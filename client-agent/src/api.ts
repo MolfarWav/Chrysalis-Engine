@@ -7,7 +7,8 @@ export interface EngineSession {
   lastAt: number | null
   title?: string | null
   archived?: boolean
-  /** project id ("app:<id>" | "project:<name>") the chat was started in */
+  /** project id ("app:<id>" | "project:<name>") the chat belongs to (where it
+   *  started, or where it was last moved) */
   project?: string | null
 }
 
@@ -137,6 +138,8 @@ export const sessionsApi = {
     api<{ ok: boolean }>("POST", `/v1/agent/sessions/${encodeURIComponent(id)}/rename`, { title }),
   archive: (id: string, archived: boolean) =>
     api<{ ok: boolean }>("POST", `/v1/agent/sessions/${encodeURIComponent(id)}/archive`, { archived }),
+  move: (id: string, project: string | null) =>
+    api<{ ok: boolean; project: string | null }>("POST", `/v1/agent/sessions/${encodeURIComponent(id)}/project`, { project }),
   truncate: (id: string, at: number) =>
     api<{ runs: number }>("POST", `/v1/agent/sessions/${encodeURIComponent(id)}/truncate`, { at }),
   compact: (id: string) =>

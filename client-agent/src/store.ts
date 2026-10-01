@@ -23,13 +23,16 @@ import {
   type ProjectSummary,
 } from "./api"
 import { applyStreamEvent, msgsFromRuns, partsFromResponse, uid, type Msg, type PartData } from "./runs"
-import { createStreamDeltaBatcher, type StreamEvent } from "./streaming"
+import { createStreamDeltaBatcher, type AskOption, type AskQuestion, type StreamEvent } from "./streaming"
 
 export interface PendingAsk {
   sessionId: string
   id: string
   question: string
-  options?: string[]
+  options?: AskOption[]
+  multiSelect?: boolean
+  /** several questions in one card, answered as one line each */
+  questions?: AskQuestion[]
   detail?: string
 }
 
@@ -125,6 +128,8 @@ export interface AgentState {
   answer: (text: string) => Promise<void>
   rename: (id: string, title: string) => Promise<void>
   archive: (id: string, archived: boolean) => Promise<void>
+  /** move a chat into a project, or out of one (null) */
+  move: (id: string, project: string | null) => Promise<void>
   remove: (id: string) => Promise<void>
   compact: () => Promise<void>
   setModel: (m: string) => void
@@ -487,6 +492,17 @@ export const useAgent = create<AgentState>()((set, get) => {
       }
     },
 
+    move: async (id, project) => {
+      try {
+        await sessionsApi.move(id, project)
+        // the list is the source of truth for a chat's project: the sidebar
+        // grouping, the header chip and the model default all follow it
+        await get().refreshSessions()
+      } catch (e) {
+        set({ banner: { kind: "error", text: e instanceof Error ? e.message : String(e) } })
+      }
+    },
+
     remove: async (id) => {
       try {
         await sessionsApi.remove(id)
@@ -719,6 +735,8 @@ function foldStream(ev: StreamEvent): void {
           id: ev.id ?? uid("ask"),
           question: ev.question ?? "",
           options: ev.options,
+          multiSelect: ev.multiSelect,
+          questions: ev.questions,
           detail: ev.detail,
         },
       })

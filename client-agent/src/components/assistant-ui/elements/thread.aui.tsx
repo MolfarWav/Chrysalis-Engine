@@ -44,7 +44,7 @@ import {
 import { ArrowDown, ArrowUp, Check, CaretLeft, CaretRight, Copy, DownloadSimple, Chat, Microphone, DotsThree, PencilSimple, ArrowsClockwise, Square } from "@phosphor-icons/react";
 import { useEnterSends } from "@/hooks/use-touch-ui";
 import { currentProjectId, effectiveModel, useAgent as useAgentStore } from "@/store";
-import { ComposerProjectRow, ProjectAttachButton, ProjectContextLine } from "@/ProjectChat";
+import { ComposerProjectRow, ProjectAttachButton, ProjectContextLine, SaveToProjectAction } from "@/ProjectChat";
 import {
   createContext,
   useContext,
@@ -662,10 +662,11 @@ const CopyAction: FC = () => {
 };
 
 const AssistantActionBar: FC = () => {
+  const [saving, setSaving] = useState(false);
   return (
     <ActionBarPrimitive.Root
       hideWhenRunning
-      autohide="not-last"
+      autohide={saving ? "never" : "not-last"}
       className="aui-assistant-action-bar-root text-muted-foreground animate-in fade-in col-start-3 row-start-2 -ms-1 flex gap-1 duration-200"
     >
       <CopyAction />
@@ -674,6 +675,7 @@ const AssistantActionBar: FC = () => {
           <ArrowsClockwise />
         </TooltipIconButton>
       </ActionBarPrimitive.Reload>
+      <SaveToProjectAction open={saving} onOpenChange={setSaving} />
       <ActionBarMorePrimitive.Root>
         <ActionBarMorePrimitive.Trigger asChild>
           <TooltipIconButton

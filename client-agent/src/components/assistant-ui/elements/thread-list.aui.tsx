@@ -12,7 +12,9 @@ import {
   useAui,
   useAuiState,
 } from "@assistant-ui/react";
-import { Archive, ArrowCounterClockwise, CaretRight, CircleNotch, DotsThree, PencilSimple, Plus, MagnifyingGlass, Trash } from "@phosphor-icons/react";
+import { AppWindow, Archive, ArrowCounterClockwise, CaretRight, Check, CircleNotch, DotsThree, Folder, PencilSimple, Plus, MagnifyingGlass, Trash } from "@phosphor-icons/react";
+import { useAgent } from "@/store";
+import type { ProjectSummary } from "@/api";
 import {
   forwardRef,
   Fragment,
@@ -290,7 +292,11 @@ const ThreadListSkeleton: FC = () => {
   );
 };
 
+/** dataTransfer type of a dragged chat row; its value is the session id */
+export const CHAT_DRAG_TYPE = "application/x-chrysalis-chat";
+
 export const ThreadListItem: FC = () => {
+  const id = useAuiState((s) => s.threadListItem.id);
   const isRunning = useAuiState((s) => s.threadListItem.isRunning);
   const [isRenaming, setIsRenaming] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -305,6 +311,11 @@ export const ThreadListItem: FC = () => {
   return (
     <ThreadListItemPrimitive.Root
       data-slot="aui_thread-list-item"
+      draggable={!isRenaming}
+      onDragStart={(event) => {
+        event.dataTransfer.setData(CHAT_DRAG_TYPE, id);
+        event.dataTransfer.effectAllowed = "move";
+      }}
       className="group hover:bg-muted focus-visible:bg-muted data-active:bg-muted has-focus-visible:bg-muted has-data-[state=open]:bg-muted relative flex h-8 items-center rounded-md transition-colors focus-visible:outline-none"
     >
       {isRenaming ? (
@@ -405,6 +416,70 @@ const ThreadListItemRename: FC<{
   );
 };
 
+/** Same icon as the sidebar's project rows (Sidebar imports this file, so it
+ *  cannot be imported from there). */
+const MoveTargetIcon: FC<{ project: Pick<ProjectSummary, "icon" | "kind"> }> = ({ project }) => {
+  if (project.icon) return <span aria-hidden className="w-4 shrink-0 text-center leading-none">{project.icon}</span>;
+  const Icon = project.kind === "app" ? AppWindow : Folder;
+  return <Icon aria-hidden className="text-muted-foreground size-4 shrink-0" />;
+};
+
+const MOVE_ITEM_CLASS =
+  "hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none select-none";
+
+/** "Move to project": every project as an item under a small label, the
+ *  chat's current one checked, "No project" last. The primitive has no
+ *  submenu, so the list sits in the same menu. */
+const ThreadListItemMoveTo: FC = () => {
+  const id = useAuiState((s) => s.threadListItem.id);
+  const projects = useAgent((s) => s.projects);
+  const move = useAgent((s) => s.move);
+  const project = useAgent((s) => s.sessions.find((x) => x.sessionId === id)?.project ?? null);
+  // a chat whose project was deleted lives in the plain list
+  const current = projects.some((p) => p.id === project) ? project : null;
+  if (!projects.length) return null;
+
+  const pick = (target: string | null) => {
+    if (target !== current) void move(id, target);
+  };
+
+  return (
+    <>
+      <ThreadListItemMorePrimitive.Separator className="bg-border -mx-1.5 my-1 h-px" />
+      <div
+        data-slot="aui_thread-list-item-move-label"
+        className="text-muted-foreground px-2.5 pt-1 pb-0.5 text-xs font-medium"
+      >
+        Move to project
+      </div>
+      <div className="flex max-h-56 flex-col overflow-y-auto">
+        {projects.map((p) => (
+          <ThreadListItemMorePrimitive.Item
+            key={p.id}
+            data-slot="aui_thread-list-item-move-item"
+            className={MOVE_ITEM_CLASS}
+            onSelect={() => pick(p.id)}
+          >
+            <MoveTargetIcon project={p} />
+            <span className="min-w-0 flex-1 truncate">{p.title}</span>
+            {current === p.id && <Check aria-label="Current project" className="size-4 shrink-0" />}
+          </ThreadListItemMorePrimitive.Item>
+        ))}
+        <ThreadListItemMorePrimitive.Item
+          data-slot="aui_thread-list-item-move-item"
+          className={MOVE_ITEM_CLASS}
+          onSelect={() => pick(null)}
+        >
+          <span aria-hidden className="w-4 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">No project</span>
+          {current === null && <Check aria-label="Current project" className="size-4 shrink-0" />}
+        </ThreadListItemMorePrimitive.Item>
+      </div>
+      <ThreadListItemMorePrimitive.Separator className="bg-border -mx-1.5 my-1 h-px" />
+    </>
+  );
+};
+
 const ThreadListItemMore: FC<{ onRename: () => void }> = ({ onRename }) => {
   return (
     <ThreadListItemMorePrimitive.Root sharedFocusGroup>
@@ -424,7 +499,7 @@ const ThreadListItemMore: FC<{ onRename: () => void }> = ({ onRename }) => {
         align="start"
         sideOffset={6}
         data-slot="aui_thread-list-item-more-content"
-        className="bg-popover text-popover-foreground data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-32 overflow-hidden rounded-xl border p-1.5"
+        className="bg-popover text-popover-foreground data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-44 max-w-64 overflow-hidden rounded-xl border p-1.5"
       >
         <ThreadListItemMorePrimitive.Item
           data-slot="aui_thread-list-item-more-item"
@@ -434,6 +509,7 @@ const ThreadListItemMore: FC<{ onRename: () => void }> = ({ onRename }) => {
           <PencilSimple className="size-4" />
           Rename
         </ThreadListItemMorePrimitive.Item>
+        <ThreadListItemMoveTo />
         <AuiIf condition={(s) => s.threadListItem.status !== "archived"}>
           <ThreadListItemPrimitive.Archive asChild>
             <ThreadListItemMorePrimitive.Item

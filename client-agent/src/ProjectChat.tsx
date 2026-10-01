@@ -1,14 +1,16 @@
 // What a chat inside a project adds to the thread: the context line at the top,
-// the project chip above the composer input, and one-click attach of a project
-// file to the message.
+// the project chip above the composer input, one-click attach of a project
+// file to the message, and saving a reply into the project's files.
 import { ComposerAttachments } from "@/components/assistant-ui/elements/attachment.aui"
+import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
-import { useAui } from "@assistant-ui/react"
-import { FileText, Folder, Paperclip } from "@phosphor-icons/react"
+import { useAui, useAuiState } from "@assistant-ui/react"
+import { FileText, FloppyDisk, Folder, Paperclip } from "@phosphor-icons/react"
 import { useEffect, useState, type ReactNode } from "react"
-import { projectsApi, type ProjectFile } from "./api"
+import { projectFileProblem, projectsApi, type ProjectFile } from "./api"
 import { currentProjectId, effectiveModel, useAgent } from "./store"
 
 const LISTED_FILES = 6
@@ -183,6 +185,102 @@ export function ProjectAttachButton(): ReactNode {
         ) : (
           <p className="text-muted-foreground px-2 py-2 text-xs">No files yet. Add them on the project page.</p>
         )}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+const pad2 = (n: number): string => String(n).padStart(2, "0")
+
+/** Default file name for a saved reply: a slug of its first heading (else its
+ *  first line), in any script, or a timestamped note when that leaves nothing. */
+export function defaultNoteName(text: string, now = new Date()): string {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean)
+  const line = lines.find((l) => /^#{1,6}\s/.test(l)) ?? lines[0] ?? ""
+  const slug = line
+    .replace(/^#{1,6}\s+/, "")
+    .normalize("NFC")
+    .toLowerCase()
+    // any script: a Ukrainian heading keeps its words (the engine takes Unicode names)
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+/, "")
+    .slice(0, 40)
+    .replace(/-+$/, "")
+  if (slug) return `${slug}.md`
+  const day = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+  return `note-${day}-${pad2(now.getHours())}${pad2(now.getMinutes())}.md`
+}
+
+/** Assistant message action, project chats only: save the reply's text (not
+ *  its tool calls or reasoning) as a file in the project, under a name asked
+ *  for in a small popover. The open state lives in the action bar, which has to
+ *  stay up while the popover is (it hides itself when the pointer leaves). */
+export function SaveToProjectAction({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }): ReactNode {
+  const { pid, summary } = useChatProject()
+  const aui = useAui()
+  const hasText = useAuiState((s) => s.message.parts.some((p) => p.type === "text" && p.text.trim() !== ""))
+  const [name, setName] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  if (!pid || !hasText) return null
+
+  const save = async () => {
+    const text = aui.message.getCopyText()
+    let file = name.trim() || defaultNoteName(text)
+    if (!/\.[A-Za-z0-9]+$/.test(file)) file += ".md"
+    const f = new File([text], file, { type: "text/markdown" })
+    const problem = projectFileProblem(f)
+    if (problem) {
+      setError(problem)
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const saved = await projectsApi.putFile(pid, f)
+      const store = useAgent.getState()
+      // the project page and the context line read this cache
+      if (store.projectDetails[pid]) void store.loadProject(pid, true)
+      store.setBanner({ kind: "info", text: `Saved to ${summary?.title ?? pid} files as ${saved.file?.name ?? file}` })
+      onOpenChange(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        onOpenChange(next)
+        if (next) {
+          setName(defaultNoteName(aui.message.getCopyText()))
+          setError(null)
+        }
+      }}
+    >
+      <PopoverTrigger render={<TooltipIconButton tooltip="Save to project files" className="data-[popup-open]:bg-accent" />}>
+        <FloppyDisk />
+      </PopoverTrigger>
+      <PopoverContent side="top" align="start" className="w-72">
+        <form
+          className="grid gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void save()
+          }}
+        >
+          <label className="text-muted-foreground text-xs" htmlFor="save-note-name">
+            Save to {summary?.title ?? "project"} files
+          </label>
+          <Input id="save-note-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="File name" autoFocus disabled={busy} />
+          <Button type="submit" size="sm" disabled={busy}>
+            Save
+          </Button>
+          {error ? <p className="text-destructive text-xs" role="alert">{error}</p> : null}
+        </form>
       </PopoverContent>
     </Popover>
   )

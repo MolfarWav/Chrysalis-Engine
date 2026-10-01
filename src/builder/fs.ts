@@ -89,7 +89,7 @@ export class BuildFs {
   /** Bytes read so far; the host enforces the real budget. */
   bytesRead = 0;
 
-  constructor(private transport: FsTransport, private maxBatch = 400) {}
+  constructor(private transport: FsTransport, private maxBatch = 400, private maxInflight = 4) {}
 
   private call(op: FsOp): Promise<FsResult> {
     return new Promise((resolve, reject) => {
@@ -104,13 +104,32 @@ export class BuildFs {
     });
   }
 
+  /** Round trips in flight at once. A graph with thousands of modules (an
+   *  icon barrel) asks for files over thousands of turns; one request per
+   *  turn, all at once, makes the browser refuse them
+   *  (ERR_INSUFFICIENT_RESOURCES) and the build fails with "Failed to
+   *  fetch". Ops that arrive while the lanes are full wait and leave as one
+   *  bigger batch, so the cap also cuts the number of round trips. */
+  private inflight = 0;
+
   private flush(): void {
     this.scheduled = false;
-    while (this.queue.length) {
+    while (this.queue.length && this.inflight < this.maxInflight) {
       const batch = this.queue.splice(0, this.maxBatch);
+      this.inflight++;
+      const done = () => {
+        this.inflight--;
+        this.flush();
+      };
       this.transport(batch.map((b) => b.op)).then(
-        (results) => batch.forEach((b, i) => b.resolve(results[i] ?? { ok: false, error: "no result" })),
-        (e) => batch.forEach((b) => b.reject(e)),
+        (results) => {
+          batch.forEach((b, i) => b.resolve(results[i] ?? { ok: false, error: "no result" }));
+          done();
+        },
+        (e) => {
+          batch.forEach((b) => b.reject(e));
+          done();
+        },
       );
     }
   }

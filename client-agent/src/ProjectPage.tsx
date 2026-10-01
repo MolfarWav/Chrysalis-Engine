@@ -3,7 +3,17 @@
 // projects/<name>. What is put here reaches every chat started in the project.
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  ModelSelectorContent,
+  ModelSelectorEmpty,
+  ModelSelectorGroup,
+  ModelSelectorItem,
+  ModelSelectorList,
+  ModelSelectorRoot,
+  ModelSelectorSearch,
+  ModelSelectorTrigger,
+  type ModelOption,
+} from "@/components/assistant-ui/elements/model-selector"
 import { cn, shortModelName } from "@/lib/utils"
 import { ChatCircle, DownloadSimple, FileText, Plus, Trash, UploadSimple } from "@phosphor-icons/react"
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type DragEvent, type ReactNode } from "react"
@@ -14,6 +24,7 @@ import { ProjectIcon } from "./Sidebar"
 import { useAgent } from "./store"
 
 const DEFAULT_MODEL = "__default"
+const USER_DEFAULT: ModelOption = { id: DEFAULT_MODEL, name: "User default", keywords: ["default"] }
 const INSTRUCTIONS_CLIP = 420
 
 const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e))
@@ -337,29 +348,35 @@ function DefaultModel({ detail }: { detail: ProjectDetail }): ReactNode {
   const refreshProjects = useAgent((s) => s.refreshProjects)
   const setBanner = useAgent((s) => s.setBanner)
 
-  const { items, groups } = useMemo(() => {
-    const rows = models
+  const [open, setOpen] = useState(false)
+
+  const groups = useMemo(() => {
+    const rows: Array<ModelOption & { group: string }> = models
       .map((m) => ({
-        value: `${m.provider}/${m.modelId}`,
-        label: `${shortModelName(m.label)} · ${m.connectionName ?? m.provider}`,
-        group: m.connectionName ?? m.provider,
+        id: `${m.provider}/${m.modelId}`,
         name: shortModelName(m.label),
+        // the full label and the connection stay searchable
+        keywords: [m.label, m.modelId, m.provider, m.connectionName ?? ""],
+        group: m.connectionName ?? m.provider,
       }))
       .sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name))
     // a default naming a model that is no longer listed must still show
-    if (detail.model && !rows.some((r) => r.value === detail.model))
-      rows.push({ value: detail.model, label: detail.model, group: "Other", name: detail.model })
-    const groups: Array<[string, typeof rows]> = []
+    if (detail.model && !rows.some((r) => r.id === detail.model)) rows.push({ id: detail.model, name: detail.model, group: "Other" })
+    const out: Array<[string, typeof rows]> = []
     for (const r of rows) {
-      const last = groups.at(-1)
+      const last = out.at(-1)
       if (last && last[0] === r.group) last[1].push(r)
-      else groups.push([r.group, [r]])
+      else out.push([r.group, [r]])
     }
-    return { items: [{ value: DEFAULT_MODEL, label: "User default" }, ...rows], groups }
+    return out
   }, [models, detail.model])
+  const options = useMemo<ModelOption[]>(
+    () => [USER_DEFAULT, ...groups.flatMap(([, rows]) => rows)],
+    [groups],
+  )
 
-  const change = async (v: string | null) => {
-    if (!v) return
+  const change = async (v: string) => {
+    if (v === (detail.model ?? DEFAULT_MODEL)) return
     try {
       setProjectDetail(await projectsApi.update(detail.id, { model: v === DEFAULT_MODEL ? null : v }))
       void refreshProjects()
@@ -371,24 +388,38 @@ function DefaultModel({ detail }: { detail: ProjectDetail }): ReactNode {
   const multi = groups.length > 1
   return (
     <Card title="Default model" aside="new chats start with it">
-      <Select items={items} value={detail.model ?? DEFAULT_MODEL} onValueChange={(v) => void change(v)}>
-        <SelectTrigger className="w-full" aria-label="Default model">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent align="start">
-          <SelectItem value={DEFAULT_MODEL}>User default</SelectItem>
-          {groups.map(([group, rows]) => (
-            <SelectGroup key={group}>
-              {multi ? <SelectLabel>{group}</SelectLabel> : null}
-              {rows.map((r) => (
-                <SelectItem key={r.value} value={r.value}>
-                  {r.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          ))}
-        </SelectContent>
-      </Select>
+      <ModelSelectorRoot
+        models={options}
+        value={detail.model ?? DEFAULT_MODEL}
+        onValueChange={(v) => void change(v)}
+        open={open}
+        onOpenChange={setOpen}
+      >
+        <ModelSelectorTrigger className="w-full justify-between [&>span]:truncate" aria-label="Default model" />
+        <ModelSelectorContent align="start" className="w-(--anchor-width) min-w-80">
+          <ModelSelectorSearch />
+          <ModelSelectorList className="max-h-[min(60vh,26rem)]">
+            <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+            <ModelSelectorGroup>
+              <ModelSelectorItem model={USER_DEFAULT} />
+            </ModelSelectorGroup>
+            {groups.map(([group, rows]) => (
+              <ModelSelectorGroup key={group} heading={multi ? group : undefined}>
+                {rows.map((r) => (
+                  <ModelSelectorItem key={r.id} model={r}>
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <span className="truncate font-medium" title={r.name}>
+                        {r.name}
+                      </span>
+                      {multi ? null : <span className="text-muted-foreground ms-auto shrink-0 text-xs">{group}</span>}
+                    </span>
+                  </ModelSelectorItem>
+                ))}
+              </ModelSelectorGroup>
+            ))}
+          </ModelSelectorList>
+        </ModelSelectorContent>
+      </ModelSelectorRoot>
     </Card>
   )
 }

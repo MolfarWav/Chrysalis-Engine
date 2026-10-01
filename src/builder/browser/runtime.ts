@@ -393,7 +393,28 @@ function scheduleRefresh(): void {
   refreshTimer = setTimeout(() => RefreshRuntime.performReactRefresh(), 30);
 }
 
-function apply(table: ModuleTable, info: { errors?: BuildMessage[] }): void {
+/** Modules the build dropped (nothing imports them any more): run their
+ *  prune callbacks and take their stylesheet out of the document, which
+ *  re-running the importer alone never does. */
+function prune(ids: string[]): void {
+  for (const id of ids) {
+    const st = hot.get(id);
+    for (const cb of st?.prune ?? []) {
+      try {
+        cb(hotData.get(id) ?? {});
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    styles.get(id)?.remove();
+    styles.delete(id);
+    records.delete(id);
+    hot.delete(id);
+    hotData.delete(id);
+  }
+}
+
+function apply(table: ModuleTable, info: { errors?: BuildMessage[]; removed?: string[] }): void {
   emit("chrysalis:beforeUpdate", { type: "update" });
   const changed = Object.keys(table);
   const wasLive = new Set(changed.filter((id) => records.get(id)?.module));
@@ -456,6 +477,7 @@ function apply(table: ModuleTable, info: { errors?: BuildMessage[] }): void {
       failures.push(failureText(e));
     }
   }
+  prune(info.removed ?? []);
   scheduleRefresh();
   notifyParent(failures.length ? failures.join("\n\n") : null);
   if (info.errors?.length) showErrors(info.errors);
@@ -558,7 +580,7 @@ const api = {
     env = api.env;
     define(table);
   },
-  update(n: number, table: ModuleTable, info: { errors?: BuildMessage[] } = {}): void {
+  update(n: number, table: ModuleTable, info: { errors?: BuildMessage[]; removed?: string[] } = {}): void {
     if (!started) {
       // replaying hot files listed in index.html: definitions only
       define(table);

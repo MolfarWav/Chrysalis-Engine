@@ -214,5 +214,18 @@ export class BuildFs {
         d = dirname(d);
       }
     }
+    // a removed, renamed or moved directory is reported by its own path
+    // only: everything cached under it is stale too
+    const gone = new Set(paths.filter((p) => p !== ""));
+    for (const map of [this.stats, this.texts, this.dirs, this.hashes] as Map<string, unknown>[]) {
+      for (const key of map.keys()) {
+        for (let d = dirname(key); d !== ""; d = dirname(d)) {
+          if (gone.has(d)) {
+            map.delete(key);
+            break;
+          }
+        }
+      }
+    }
   }
 }

@@ -67,3 +67,6 @@
 - Tails (C, 2026-10-01):
   - C1 rename: NOT a bug. `UserService.rename` (src/users.ts) already moves `credentials/<name>` and the avatar with rollback; route-level tests added (`test/auth-rename.test.ts`, `31e78a1`).
   - C2 git: the emulated git threw on `add` and `rm`, so `git add -A && git commit` in bash stopped before the commit and deletions stayed pending. `add` now succeeds as a no-op, `rm [-r] [-f]` deletes tracked files (honors the denylist and protected paths). Commit itself always recorded deletions. `8aec016`.
+  - C3 hot update (reproduced, fixed): `DevSession.update` (src/builder/dev.ts) never removed modules, matched only exact file paths (a deleted directory arrives as its own path, so nothing changed), and never re-resolved the importer of a deleted file or an import that was missing. Now: cache entries under a changed directory are dropped (fs.ts), importers of a gone file and modules with unresolved imports rebuild, unreachable modules are pruned and sent as `info.removed` (runtime.ts runs prune callbacks and removes their <style>). Tests `test/builder-dev-delete.test.ts`. The runtime part is not checked in a browser.
+  - Found, NOT fixed: fixing a syntax error may not hot-apply (runtime.ts `apply` re-runs only modules that were live; a module that threw is not). A guess from reading, untested.
+  - C4 Windows: only the user can run it.

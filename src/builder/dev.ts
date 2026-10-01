@@ -283,7 +283,8 @@ export class DevSession {
             const msg = messages((e as { errors?: esbuild.Message[] }).errors)[0] ?? { text: String((e as Error)?.message ?? e) };
             m.error = { ...msg, file: msg.file ?? m.file };
             m.code = `throw new SyntaxError(${JSON.stringify(`${m.error.file}${m.error.line ? `:${m.error.line}` : ""}: ${m.error.text}`)});`;
-            m.deps = {};
+            // deps stay as last built: a typo must not orphan (and prune)
+            // everything the module imports until it is fixed
           }
         }),
       );
@@ -378,6 +379,22 @@ export class DevSession {
     return out;
   }
 
+  /** Drop modules no entry reaches any more (their import was removed, or
+   *  their file is gone and the importer resolved again). Returns their ids. */
+  private prune(): string[] {
+    const live = new Set<string>();
+    const stack = [...this.entryIds];
+    for (let id = stack.pop(); id !== undefined; id = stack.pop()) {
+      const m = this.mods.get(id);
+      if (!m || live.has(id)) continue;
+      live.add(id);
+      for (const d of Object.values(m.deps)) stack.push(d);
+    }
+    const removed = [...this.mods.keys()].filter((id) => !live.has(id));
+    for (const id of removed) this.mods.delete(id);
+    return removed;
+  }
+
   private collectErrors(): BuildMessage[] {
     return [...this.mods.values()].filter((m) => m.error).map((m) => m.error!);
   }
@@ -452,31 +469,45 @@ export class DevSession {
       return this.full();
     }
     const changedSet = new Set(changed);
+    // a removed, renamed or moved directory arrives as its own path only
+    const under = changed.map((p) => `${p}/`);
+    const hit = (p: string) => changedSet.has(p) || under.some((d) => p.startsWith(d));
     const known = new Set<string>();
-    const affected: Mod[] = [];
+    const affected = new Set<Mod>();
     for (const m of this.mods.values()) {
       for (const i of m.inputs) known.add(i);
-      if ([...m.inputs].some((i) => changedSet.has(i))) affected.push(m);
+      if ([...m.inputs].some(hit)) affected.add(m);
     }
-    // a file no module reads may be new: glob importers must look again
-    if (changed.some((p) => !known.has(p))) for (const m of this.mods.values()) if (m.glob && !affected.includes(m)) affected.push(m);
+    // a file that is gone: its importers resolve the import again, to a
+    // twin (x.ts for a deleted x.tsx) or to a build error of their own, as a
+    // full build would; the module itself is then pruned
+    const gone = new Set<string>();
+    for (const m of affected) if (hit(m.file) && !(await fs.isFile(m.file))) gone.add(m.id);
+    if (gone.size) for (const m of this.mods.values()) if (Object.values(m.deps).some((d) => gone.has(d))) affected.add(m);
+    // a file no module reads may be new: glob importers and imports that
+    // did not resolve must look again
+    if (changed.some((p) => !known.has(p))) {
+      for (const m of this.mods.values()) if (m.glob || Object.values(m.deps).some((d) => d.startsWith("\0missing:"))) affected.add(m);
+    }
     // Tailwind output depends on every source's classes
-    for (const m of this.mods.values()) if (m.tailwind && !affected.includes(m)) affected.push(m);
-    const before = new Map(affected.map((m) => [m.id, m.code + JSON.stringify(m.deps)]));
+    for (const m of this.mods.values()) if (m.tailwind) affected.add(m);
+    const before = new Map([...affected].map((m) => [m.id, m.code + JSON.stringify(m.deps)]));
     const depCount = this.depIds.size;
-    const built = await this.process(affected.map((m) => ({ ...m, inputs: new Set(m.inputs) })));
+    const built = await this.process([...affected].map((m) => ({ ...m, inputs: new Set(m.inputs) })));
     // a new package import needs a new deps bundle, and the page a reload
     if (this.depIds.size !== depCount) return this.full();
-    const out = built.filter((m) => before.get(m.id) !== m.code + JSON.stringify(m.deps));
+    const removed = this.prune();
+    const out = built.filter((m) => this.mods.has(m.id) && before.get(m.id) !== m.code + JSON.stringify(m.deps));
     const meta = this.meta;
-    if (!out.length) {
+    if (!out.length && !removed.length) {
       return { ok: true, mode: "development", files: [], copies: [], warnings: [], errors: this.collectErrors(), remove: [], keep: [], meta, hot: null, full: false, unchanged: true };
     }
     meta.seq += 1;
     const hotFile = `dev/hot-${meta.seq}.js`;
     const errors = this.collectErrors();
+    const info = removed.length ? { errors, removed } : { errors };
     const files: BuildOutput["files"] = [
-      { path: hotFile, contents: `__chrysalis_dev.update(${meta.seq}, {\n${out.map((m) => this.moduleSource(m)).join(",\n")}\n}, ${JSON.stringify({ errors })});\n` },
+      { path: hotFile, contents: `__chrysalis_dev.update(${meta.seq}, {\n${out.map((m) => this.moduleSource(m)).join(",\n")}\n}, ${JSON.stringify(info)});\n` },
     ];
     const remove: string[] = [];
     meta.hot.push(hotFile);

@@ -4,16 +4,10 @@ These two fixes live in the user's workspace (`data/users/<name>/`), which
 Claude Code cannot reach. The user pastes the prompt below into a new chat
 on the agent page, ideally inside the Roleplay project.
 
-Before pasting, install the two skills once (the agent cannot write `skills/`
-itself). From the Chrysalis folder, in `cmd`:
-
-```bat
-xcopy /E /I /Y .fork\skills\plugin-silent-failure data\users\<name>\skills\plugin-silent-failure
-xcopy /E /I /Y .fork\skills\cyrillic-text-matching data\users\<name>\skills\cyrillic-text-matching
-```
-
-Replace `<name>` with the account name. A skill already in place is overwritten
-with the newer copy.
+The two skills it names (`plugin-silent-failure`, `cyrillic-text-matching`)
+ship with the engine as built-in skills since 2026-10-01: nothing to copy.
+An older hand-made copy in the workspace `skills/` replaces the built-in one;
+delete it in Memory and skills to use the newer built-in version.
 
 Use a model with tool calling and at least a 32k window. Run the two tasks in
 separate chats if the model's window is small.
@@ -25,6 +19,8 @@ separate chats if the model's window is small.
 Two fixes in the Roleplay app. Do them one at a time; finish and commit the
 first before starting the second. Load the named skill first, with skill_load,
 and follow it step by step. If a skill is missing, stop and tell me.
+If a skill turns out wrong or misses a step, propose the fix with skill_edit
+at the end.
 
 ### Task 1: Archivarius writes nothing to vault-chats
 

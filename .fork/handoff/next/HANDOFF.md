@@ -79,7 +79,7 @@ out of view. **Ask the user which concept before building**; offer these (they c
    prompt); `memory/<topic>.md` files are listed by name + first line and read on demand.
    Cheap, transparent, fits small windows.
 2. **Search instead of showing everything**: a `memory_search` tool over all entries (keyword +
-   Cyrillic-aware matching: see `.fork/skills/cyrillic-text-matching`), the prompt keeps only pinned
+   Cyrillic-aware matching: see `builtin-skills/cyrillic-text-matching`), the prompt keeps only pinned
    and recent entries.
 3. **Consolidation**: when a scope passes a size, the agent proposes a rewrite (merge duplicates,
    drop stale, move detail to topic files), shown as a diff the user confirms.
@@ -96,7 +96,7 @@ Size M–L.
 Both live in the user's workspace, which Claude Code cannot reach. What you CAN do: write a precise,
 copy-pasteable task prompt for the built-in agent (files to grep for, the skills to load:
 `plugin-silent-failure`, `cyrillic-text-matching`, the checks to run), and improve those skills in
-`.fork/skills/` if they lack something. Tell the user this split plainly. Size S.
+`builtin-skills/` (moved from `.fork/skills/` 2026-10-01) if they lack something. Tell the user this split plainly. Size S.
 
 ### 3.4 Built-in default instructions the agent cannot drift from, with one-click reset
 The user wants default instructions shipped with the engine that keep the agent out of places it

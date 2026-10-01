@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import isomorphicGit from "isomorphic-git";
 import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
-import { WRITE_TOOLS, buildUserTools } from "../src/agent/tools.js";
+import { WRITE_TOOLS, buildUserTools, normalizeAsk, type AskRequest } from "../src/agent/tools.js";
 import { UserAgent, archiveSession, listSessions, renameSession, sessionFile, type AgentStreamEvent } from "../src/agent/agent.js";
 import { UserModelService } from "../src/models.js";
 import { defaultInstanceConfig } from "../src/config.js";
@@ -44,9 +44,52 @@ afterEach(() => {
 });
 
 describe("agent tools", () => {
+  it("ask_user takes plain strings, rich options and several questions, however loosely sent", async () => {
+    // plain strings still work
+    expect(normalizeAsk({ question: "Which?", options: ["A", "B", "A", " "] })).toEqual({
+      question: "Which?",
+      options: [{ label: "A" }, { label: "B" }],
+    });
+    // rich options: other key names, a JSON-string array, one recommended at most
+    expect(
+      normalizeAsk({
+        question: "Layout?",
+        multiSelect: true,
+        options: JSON.stringify([
+          { text: "Tabs", desc: "one panel at a time", recommended: true },
+          { label: "Split", description: "two panes side by side", recommended: true },
+          { foo: 1 },
+        ]),
+      }),
+    ).toEqual({
+      question: "Layout?",
+      multiSelect: true,
+      options: [
+        { label: "Tabs", description: "one panel at a time", recommended: true },
+        { label: "Split", description: "two panes side by side" },
+      ],
+    });
+    // several questions in one card; a single one collapses into a plain question
+    const many = normalizeAsk({ question: "Before I build", questions: [{ question: "Theme?", options: ["Dark", "Light"] }, { question: "Mobile?", options: ["Yes", "No"], multiSelect: true }, { nope: 1 }] });
+    expect(many?.questions?.map((q) => q.question)).toEqual(["Theme?", "Mobile?"]);
+    expect(many?.questions?.[1]?.multiSelect).toBe(true);
+    expect(normalizeAsk({ question: "", questions: [{ question: "Theme?", options: ["Dark"] }] })).toEqual({ question: "Theme?", options: [{ label: "Dark" }] });
+    expect(normalizeAsk({ question: "  " })).toBeNull();
+
+    // the tool passes the normalized card to the user
+    const p = bootstrapUserDir(dataDir, "alice");
+    const asked: AskRequest[] = [];
+    const tools = buildUserTools("alice", p, { dataDir: p.root, ask: async (q) => { asked.push(q); return "Theme?: Dark"; } });
+    const ask = tools.find((t) => t.name === "ask_user")!;
+    const raw = { question: "Q", options: [{ title: "X", hint: "why" }] };
+    const prepared = ask.prepareArguments ? ask.prepareArguments(raw) : raw;
+    await ask.execute("t1", prepared as never);
+    expect(asked[0]).toEqual({ question: "Q", options: [{ label: "X", description: "why" }] });
+  });
+
   it("accept mode: bash waits for approval — decline blocks, approval runs", async () => {
     const p = bootstrapUserDir(dataDir, "alice");
-    const asked: Array<{ question: string; options?: string[]; detail?: string }> = [];
+    const asked: AskRequest[] = [];
     let reply = "Skip";
     const tools = buildUserTools("alice", p, {
       dataDir: p.root,

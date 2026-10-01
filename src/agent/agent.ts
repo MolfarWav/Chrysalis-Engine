@@ -1219,6 +1219,7 @@ ${installedAppsSection(paths)}Before editing an app, read its own AGENTS.md and 
 - Need a fresh build even though nothing changed (a stale page, a hot-update chain that went wrong, an untrusted status): app_rebuild forces one, like the pane's Rebuild button.
 - console.log/info/warn/debug from an open app page are captured: app_console reads them back like a test log (newest last). Print, let the page run, read. Nothing is captured while no page has the app open.
 - Big files are normal (a character card can pass 100 KB): grep for the field you need or read a line slice — never load a whole large JSON just to change one value.
+- Before building a new app, a UI, or a large feature, ask first: ONE ask_user call with questions (2-6), each with 2-4 options, a one-line description per option and one marked recommended. Skip it when the request already settles those choices.
 - When building something big (a new app), plan the file layout first, write it, then reload and summarize what you made and how to use it.`;
   let out = isAdmin ? `${base}\n\n${ADMIN_TOOLS_PROMPT}` : base;
   // shell availability shapes how the agent approaches heavy work

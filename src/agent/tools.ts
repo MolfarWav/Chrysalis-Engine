@@ -28,7 +28,7 @@ export interface AgentToolOptions {
   /** ask_user wiring: surface the question to the user and await their answer.
    *  `detail` (optional) renders as a monospace block under the question —
    *  e.g. the exact shell command awaiting approval in accept mode. */
-  ask?: (q: { question: string; options?: string[]; detail?: string }) => Promise<string>;
+  ask?: (q: AskRequest) => Promise<string>;
   /** Accept mode: every bash call waits for the user's approval (via ask)
    *  before running — "Run it" executes, anything else declines. */
   acceptShell?: boolean;
@@ -85,6 +85,116 @@ function legacyGitArgs(p: { action?: unknown; message?: unknown; limit?: unknown
   return null;
 }
 
+/** One quick-pick choice in an ask_user card. */
+export interface AskOption {
+  label: string;
+  /** One line under the choice: what picking it means. */
+  description?: string;
+  recommended?: boolean;
+}
+
+export interface AskQuestion {
+  question: string;
+  options?: AskOption[];
+  multiSelect?: boolean;
+}
+
+/** What an ask card shows. `detail` renders as a monospace block (e.g. the
+ *  exact shell command awaiting approval); `questions` puts several
+ *  questions in one card, answered as one line each. */
+export interface AskRequest {
+  question: string;
+  options?: (string | AskOption)[];
+  multiSelect?: boolean;
+  questions?: AskQuestion[];
+  detail?: string;
+}
+
+const ASK_OPTION = Type.Object({
+  label: Type.String(),
+  description: Type.Optional(Type.String()),
+  recommended: Type.Optional(Type.Boolean()),
+});
+
+const clip = (v: unknown, max: number): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+
+/** A choice as a model wrote it: free models send plain strings, objects
+ *  with other key names, or stray fields. Anything without a label drops. */
+export function normalizeAskOption(raw: unknown): AskOption | null {
+  if (typeof raw === "string") {
+    const label = clip(raw, 120);
+    return label ? { label } : null;
+  }
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const label = clip(o.label ?? o.text ?? o.title ?? o.name ?? o.value, 120);
+  if (!label) return null;
+  const description = clip(o.description ?? o.desc ?? o.explanation ?? o.hint, 300);
+  return { label, ...(description ? { description } : {}), ...(o.recommended === true ? { recommended: true } : {}) };
+}
+
+/** Free models sometimes send an array as a JSON string. */
+const asArray = (raw: unknown): unknown[] => {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string" && raw.trim().startsWith("[")) {
+    try {
+      const v = JSON.parse(raw) as unknown;
+      if (Array.isArray(v)) return v;
+    } catch { /* not JSON: no list */ }
+  }
+  return [];
+};
+
+const normalizeOptions = (raw: unknown): AskOption[] => {
+  raw = asArray(raw);
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: AskOption[] = [];
+  for (const r of raw) {
+    const o = normalizeAskOption(r);
+    if (!o || seen.has(o.label)) continue;
+    seen.add(o.label);
+    out.push(o);
+    if (out.length >= 8) break;
+  }
+  // one recommended pick at most: the first one marked
+  let marked = false;
+  for (const o of out) {
+    if (o.recommended && marked) delete o.recommended;
+    if (o.recommended) marked = true;
+  }
+  return out;
+};
+
+/** ask_user arguments → the card to show; null when there is nothing to ask. */
+export function normalizeAsk(params: unknown): AskRequest | null {
+  const p = (params && typeof params === "object" ? params : {}) as Record<string, unknown>;
+  const questions = asArray(p.questions)
+    .map((q): AskQuestion | null => {
+      const r = (q && typeof q === "object" ? q : { question: q }) as Record<string, unknown>;
+      const question = clip(r.question ?? r.text ?? r.title, 500);
+      if (!question) return null;
+      const options = normalizeOptions(r.options);
+      return { question, ...(options.length ? { options } : {}), ...(r.multiSelect === true && options.length ? { multiSelect: true } : {}) };
+    })
+    .filter((q): q is AskQuestion => q !== null)
+    .slice(0, 6);
+  const question = typeof p.question === "string" ? p.question.trim().slice(0, 2000) : "";
+  if (!question && !questions.length) return null;
+  // a single entry in questions is just a question
+  if (questions.length === 1 && !normalizeOptions(p.options).length) {
+    const only = questions[0] as AskQuestion;
+    return { ...only, question: question && question !== only.question ? `${question}\n\n${only.question}` : only.question };
+  }
+  const options = normalizeOptions(p.options);
+  return {
+    question: question || "A few questions",
+    ...(options.length ? { options } : {}),
+    ...(p.multiSelect === true && options.length ? { multiSelect: true } : {}),
+    ...(questions.length ? { questions } : {}),
+  };
+}
+
 export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOptions = { dataDir: "." }): AgentTool[] {
   const guard = makePathGuard(p.root);
 
@@ -95,15 +205,32 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
     // concurrent calls would overwrite each other's card and hang the batch
     executionMode: "sequential",
     description:
-      "Ask the signed-in user a question and wait for their answer. Use when requirements are ambiguous, a decision is needed, or before anything destructive. options is an optional list of quick-pick choices.",
+      "Ask the signed-in user and wait for the answer. Use when requirements are ambiguous, a decision is needed, or before anything destructive. " +
+      "options: quick-pick choices, each a plain string or {label, description, recommended}; description is one short line saying what the choice means. " +
+      "multiSelect: the user may pick several. questions: ask several questions in ONE card (each {question, options, multiSelect}); the answer comes back as one line per question. " +
+      "The user can always type their own answer instead.",
     parameters: Type.Object({
-      question: Type.String({ description: "The question to show the user" }),
-      options: Type.Optional(Type.Array(Type.String(), { description: "Optional quick-pick choices" })),
+      question: Type.String({ description: "The question, or a one-line intro when questions is set" }),
+      options: Type.Optional(Type.Array(Type.Union([Type.String(), ASK_OPTION]), { description: "Quick-pick choices: strings, or {label, description, recommended}" })),
+      multiSelect: Type.Optional(Type.Boolean({ description: "Allow picking several options" })),
+      questions: Type.Optional(
+        Type.Array(
+          Type.Object({
+            question: Type.String(),
+            options: Type.Optional(Type.Array(Type.Union([Type.String(), ASK_OPTION]))),
+            multiSelect: Type.Optional(Type.Boolean()),
+          }),
+          { description: "Several questions in one card (2-6), each with its own options" },
+        ),
+      ),
     }),
+    // before schema validation: a loose shape from a weak model still asks
+    prepareArguments: (raw) => normalizeAsk(raw) ?? raw,
     async execute(_id, params) {
-      const { question, options } = params as { question: string; options?: string[] };
+      const req = normalizeAsk(params);
+      if (!req) throw new Error("question is required");
       if (!opts.ask) return textResult("The user is not available right now — proceed with your best judgment and say what you assumed.");
-      const answer = await opts.ask({ question, ...(options?.length ? { options } : {}) });
+      const answer = await opts.ask(req);
       return textResult(answer || "(no answer)");
     },
   };

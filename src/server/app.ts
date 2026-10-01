@@ -31,6 +31,7 @@ import { radiusProvider } from "@earendil-works/pi-ai/providers/radius";
 import type { AuthPrompt, Credential, ProviderAuthInteraction } from "@earendil-works/pi-ai";
 import { curatedProviders, loadCustomProviders, reservedProviderIds } from "../providers/custom.js";
 import { UserAgent, instructionDocsStamp, listSessions, renameSession, archiveSession, moveSession, sessionDir, sessionProject, isReasoningLevel, type ReasoningLevel } from "../agent/agent.js";
+import { normalizeAskOption } from "../agent/tools.js";
 import * as projects from "../agent/projects.js";
 import * as profileBackup from "../profile-backup.js";
 import { summarizeSession } from "../agent/compact.js";
@@ -612,7 +613,16 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
             pendingQuestions.set(id, { resolve, sessionId: askSessionId, username: u.username });
             bus.emit(u.username, "agent_event", {
               sessionId: askSessionId,
-              ev: { type: "ask_user", id, question: q.question, ...(q.options?.length ? { options: q.options } : {}), ...(q.detail ? { detail: q.detail } : {}) },
+              ev: {
+                type: "ask_user",
+                id,
+                question: q.question,
+                // engine prompts pass plain labels; the card always gets objects
+                ...(q.options?.length ? { options: q.options.map(normalizeAskOption).filter((o) => o !== null) } : {}),
+                ...(q.multiSelect ? { multiSelect: true } : {}),
+                ...(q.questions?.length ? { questions: q.questions } : {}),
+                ...(q.detail ? { detail: q.detail } : {}),
+              },
             });
             setTimeout(() => {
               if (pendingQuestions.delete(id)) resolve("(no answer — timed out)");

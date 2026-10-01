@@ -15,6 +15,7 @@ import { ServerSettings } from "../src/server/settings.js";
 import { EventBus } from "../src/server/ws.js";
 import { SessionService } from "../src/sessions.js";
 import { UserService } from "../src/users.js";
+import type { AskRequest } from "../src/agent/tools.js";
 
 let home: string;
 
@@ -243,7 +244,7 @@ describe("server_settings agent tool", () => {
     const settings = new ServerSettings({ homeDir: home, dataDir: path.join(home, "data"), loaded, applySocket: () => false, applyRuntime: () => {} });
     return { loaded, settings };
   };
-  const toolWith = async (settings: ServerSettings, ask: ((q: { question: string; options?: string[]; detail?: string }) => Promise<string>) | undefined, readOnly = false) => {
+  const toolWith = async (settings: ServerSettings, ask: ((q: AskRequest) => Promise<string>) | undefined, readOnly = false) => {
     const { buildAdminTools } = await import("../src/agent/agent.js");
     const tools = buildAdminTools(new UserService(path.join(home, "data")), { settings, ...(ask ? { ask } : {}), readOnly });
     return tools.find((t) => t.name === "server_settings")!;

@@ -445,7 +445,7 @@ function LanguageSection() {
 
 function GeneralTab(props: { me: Me; onLogout: () => void }) {
   return (
-    <Pane title={tr("General")} description={tr("Your account for this Chrysalis.")}>
+    <Pane title={tr("General")} description={tr("Your account for this Molfar Vertep.")}>
       <div className="flex flex-col gap-6 pb-4">
         <LanguageSection />
         <AccountSection me={props.me} onLogout={props.onLogout} />
@@ -1680,7 +1680,7 @@ function OAuthForm(props: { pick: OAuthPick; onBack: () => void; onDone: () => v
         </label> : null}
       <p className="text-12 leading-4 text-ink-muted">
         {props.pick.authKind === "oauth"
-          ? tr("No API key, sign in with your account. Chrysalis stores the tokens on this machine only.")
+          ? tr("No API key, sign in with your account. Molfar Vertep stores the tokens on this machine only.")
           : tr("Connect with the provider's own sign-in. Credentials stay on this machine.")}
       </p>
       {!flow || flow!.status !== "pending" ? <Button variant="neutral" size="normal" disabled={busy || !name.trim()} onClick={start}>
@@ -2358,7 +2358,7 @@ function UsersTab(props: { me: Me }) {
   }
 
   return (
-    <Pane title={tr("Users")} description={tr("People who can sign in to this Chrysalis. Each gets their own workspace, agent and apps.")}>
+    <Pane title={tr("Users")} description={tr("People who can sign in to this Molfar Vertep. Each gets their own workspace, agent and apps.")}>
       <div className="flex flex-col gap-4 pb-4">
         <section className="flex flex-col gap-2">
           {!users.loading ? (users.data ?? []).map((u) => (

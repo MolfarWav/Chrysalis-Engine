@@ -1,8 +1,8 @@
-# Chrysalis fork: project state
+# Molfar Vertep: project state
 
-**Chrysalis, fork MolfarWav/Chrysalis-Engine (2026-09-29).**
+**Molfar Vertep, fork of Chrysalis Engine; repo MolfarWav/Molfar.Vertep (renamed from Chrysalis-Engine-Molfar on 2026-10-01).**
 
-- Branch: `claude/brave-heisenberg-4l4wdh` (each Claude session gets its own branch; this one continues `claude/vigilant-galileo-nfxpr6`).
+- Branch: `main` carries the current state; each Claude session works on its own `claude/*` branch.
 - Phase 1 (agent context stability): done. Commits `dd840e8`, `ffa018a`.
   Modules: `src/agent/context-budget.ts`, `src/agent/compact.ts`.
   Tested on MiniMax M2.5; the log is clean.
@@ -71,4 +71,8 @@
   - Found, NOT fixed: fixing a syntax error may not hot-apply (runtime.ts `apply` re-runs only modules that were live; a module that threw is not). A guess from reading, untested.
   - C4 Windows: only the user can run it.
 - Release 0.1.0 (2026-10-01): the fork's own version line starts at 0.1.0 (user choice; upstream is 1.0.x). `package.json` repository now points to MolfarWav/Chrysalis-Engine-Molfar, so update checks follow the fork (with upstream's repo and 0.1.0, every copy would offer upstream 1.0.2 and a binary would self-update onto it). `CHANGELOG.md` lists every fork change; README opens with the fork notice (AGPL §5). GitHub release `0.1.0` (tag `0.1.0`, created by the user on the branch head; the session proxy cannot push tags).
-- Next (handed off): five agent tools for 0.2.0 and the rename (name not chosen yet): `.fork/handoff/agent-tools/HANDOFF.md`.
+- Rename to Molfar Vertep (2026-10-01, branch `claude/upbeat-allen-dvg9e1`, then `main`): user's choice of name. Shown as "Molfar Vertep", package `molfar-vertep`, repo `MolfarWav/Molfar.Vertep` (the repo URL drives update checks). Changed: 24 UI strings in all 13 locales (de/nl compounds `Molfar-Vertep-Server`, ko particles 을/이/은), page titles, CLI and log messages in `src/index.ts`, README head (upstream README kept below a divider), CHANGELOG, launchers (`Chrysalis.bat` also runs `git remote set-url` so old clones follow the new URL; APP folder unchanged). Kept: every internal `chrysalis` name, release asset names (`self-update.ts` matches `Chrysalis-*`), the logo file, strings crediting the Chrysalis maintainers for Store apps and "Needs Chrysalis engine" (app requirements use upstream versions).
+  - Fixed on the way: `bun run typecheck` failed since `a93d197` (test imported `client-agent/src/lib/utils.ts`, which uses DOM types). `shortModelName` moved to `client-agent/src/lib/model-name.ts`, re-exported from utils.
+  - Session containers ship Bun 1.3.14; the project needs 1.4.0 (lockfile format). `npm i -g bun@1.4.0` gives a working binary.
+  - `main` now carries the fork (it was upstream 1.0.2). The Windows launcher still follows the newest `claude/*` branch, not `main`.
+- Next (handed off): five agent tools for 0.2.0: `.fork/handoff/agent-tools/HANDOFF.md`.

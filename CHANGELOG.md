@@ -1,9 +1,14 @@
 # Changelog
 
-This is a modified version of [Chrysalis Engine](https://github.com/ProjectChrysalis/Chrysalis-Engine)
-(AGPL-3.0-only), maintained at [MolfarWav/Chrysalis-Engine-Molfar](https://github.com/MolfarWav/Chrysalis-Engine-Molfar).
+Molfar Vertep is a modified version of [Chrysalis Engine](https://github.com/ProjectChrysalis/Chrysalis-Engine)
+(AGPL-3.0-only), maintained at [MolfarWav/Molfar.Vertep](https://github.com/MolfarWav/Molfar.Vertep).
 Every change below was made in this fork; the upstream project's own history is in git.
 Versions here count from 0.1.0 and are independent of upstream's.
+
+## Unreleased
+
+- The project is now called **Molfar Vertep**: the interface (all 13 languages), page titles, console messages, README and `package.json`. Internal names stay (the `chrysalis` command, data folders, `CHRYSALIS_*` variables, release file names), so existing installs keep their data and upstream fixes still merge. Strings about the Store's official apps still credit the Chrysalis maintainers, who make them.
+- Update checks and `package.json` point to the renamed repository, MolfarWav/Molfar.Vertep.
 
 ## 0.1.0 (2026-10-01)
 

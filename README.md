@@ -1,20 +1,33 @@
-<p align="center"><img src="client/public/chrysalis_logo.png" width="128" alt="Chrysalis" /></p>
+<p align="center"><img src="client/public/chrysalis_logo.png" width="128" alt="Molfar Vertep" /></p>
 
-<p align="center">
-  <a href="https://github.com/ProjectChrysalis/Chrysalis-Engine/releases/latest"><img src="https://img.shields.io/github/v/release/ProjectChrysalis/Chrysalis-Engine?label=Release" alt="Latest release" /></a>
-  <a href="https://www.npmjs.com/package/chrysalis-engine"><img src="https://img.shields.io/npm/v/chrysalis-engine?logo=npm&label=npm" alt="npm version" /></a>
-  <a href="https://github.com/ProjectChrysalis/Chrysalis-Engine/stargazers"><img src="https://img.shields.io/github/stars/ProjectChrysalis/Chrysalis-Engine?style=flat&logo=github&label=Stars" alt="GitHub stars" /></a>
-  <a href="https://discord.gg/maFVqyeD4Q"><img src="https://img.shields.io/discord/1548807690380255262?logo=discord&logoColor=white&label=Discord&color=5865F2" alt="Discord" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/ProjectChrysalis/Chrysalis-Engine?label=License" alt="License" /></a>
-  <a href="https://github.com/ProjectChrysalis/Chrysalis-Engine/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ProjectChrysalis/Chrysalis-Engine/ci.yml?branch=main&label=CI" alt="CI status" /></a>
-</p>
+# Molfar Vertep
 
-> **This is a modified fork** of [Chrysalis Engine](https://github.com/ProjectChrysalis/Chrysalis-Engine),
-> maintained at [MolfarWav/Chrysalis-Engine-Molfar](https://github.com/MolfarWav/Chrysalis-Engine-Molfar)
-> under the same license (AGPL-3.0-only). Versions count from 0.1.0. What changed: [CHANGELOG.md](CHANGELOG.md).
-> The rest of this README is upstream's and describes upstream releases.
+**The AI frontend you can reshape just by asking.**
 
-# Chrysalis
+Molfar Vertep is a modified fork of [Chrysalis Engine](https://github.com/ProjectChrysalis/Chrysalis-Engine)
+by ProjectChrysalis, under the same license (AGPL-3.0-only). Source:
+[MolfarWav/Molfar.Vertep](https://github.com/MolfarWav/Molfar.Vertep).
+Versions count from 0.1.0 and are independent of upstream's. What changed: [CHANGELOG.md](CHANGELOG.md).
+
+Run it from source:
+
+```sh
+git clone https://github.com/MolfarWav/Molfar.Vertep
+cd Molfar.Vertep
+bun install && (cd client-agent && bun install)
+bun run build:client
+bun start
+```
+
+Internal names stay as upstream has them (the `chrysalis` command, data folders,
+environment variables), so upstream fixes keep merging cleanly.
+
+---
+
+*The rest of this README is upstream's. It describes Chrysalis Engine and its
+releases, not this fork's.*
+
+# Chrysalis Engine
 
 **The AI frontend you can reshape just by asking.**
 

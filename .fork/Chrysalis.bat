@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions
 title Chrysalis
-rem Chrysalis: install, update and start, in one file.
+rem Molfar Vertep: install, update and start, in one file.
 rem Keep this file OUTSIDE the app folder (for example D:\ROLEPlay\Chrysalis.bat).
 rem
 rem   Chrysalis.bat             update to the newest work branch, then start
@@ -13,7 +13,7 @@ rem Your data (D:\ROLEPlay\Chrysalis-Engine\data) is never touched by an update:
 rem git ignores that folder.
 
 set "APP=D:\ROLEPlay\Chrysalis-Engine"
-set "REPO=https://github.com/MolfarWav/Chrysalis-Engine-Molfar.git"
+set "REPO=https://github.com/MolfarWav/Molfar.Vertep.git"
 rem tools installed by this script are found without reopening the window
 set "PATH=%USERPROFILE%\.bun\bin;%ProgramFiles%\Git\cmd;%PATH%"
 
@@ -42,7 +42,7 @@ if errorlevel 1 (
 rem ---------- first run: download ----------
 set "FULL="
 if not exist "%APP%\.git" (
-  echo === Downloading Chrysalis to %APP%...
+  echo === Downloading Molfar Vertep to %APP%...
   git clone "%REPO%" "%APP%"
   if errorlevel 1 goto fail
   set "FULL=1"
@@ -54,6 +54,8 @@ if /i "%~1"=="rebuild" goto deps
 if /i "%~1"=="nopull" goto deps
 
 rem ---------- update ----------
+rem a copy cloned before the repository was renamed follows it under its new name
+git remote set-url origin "%REPO%"
 echo === Checking for updates...
 git fetch --prune origin
 if errorlevel 1 (
@@ -123,11 +125,11 @@ if errorlevel 1 goto fail
 
 rem ---------- start ----------
 :run
-echo === Starting Chrysalis. Close this window or press Ctrl+C to stop.
+echo === Starting Molfar Vertep. Close this window or press Ctrl+C to stop.
 echo     First start: open the link with #setup= that appears below to create your account.
 call bun start
 echo.
-echo Chrysalis stopped.
+echo Molfar Vertep stopped.
 pause
 exit /b 0
 

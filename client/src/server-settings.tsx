@@ -151,8 +151,8 @@ function PhoneQr(props: { urls: string[] }) {
 /** How this kind of install gets a new version. */
 function updateHow(info: ServerInfo, staging: boolean): string {
   if (info.container) return staging ? tr("Pull the staging image and recreate the container. Your data stays in its volume.") : tr("Pull the latest image and recreate the container. Your data stays in its volume.")
-  if (info.installKind === "source") return tr("Update with git pull, bun install and bun run build:client, then restart Chrysalis.")
-  if (info.installKind === "npm") return tr("Update with bun add -g chrysalis-engine@latest, then restart Chrysalis.")
+  if (info.installKind === "source") return tr("Update with git pull, bun install and bun run build:client, then restart Molfar Vertep.")
+  if (info.installKind === "npm") return tr("Update with bun add -g chrysalis-engine@latest, then restart Molfar Vertep.")
   if (info.installKind === "android") return tr("Install the new app from the release page. Your data stays.")
   if (info.portable) return tr("Download it from the release page, then move config.yaml and the data folder into the new copy before deleting this one.")
   return tr("Download it from the release page and replace this copy. Your data stays in its own folder.")
@@ -204,11 +204,11 @@ function useInstallUpdate(release: EngineRelease) {
       // a restarted engine on another version: the old one came back
       const state = await serverApi.updateState().catch(() => null)
       setPhase("idle")
-      setErr(state?.phase === "failed" && state.error ? state.error : tr("Chrysalis restarted without the update."))
+      setErr(state?.phase === "failed" && state.error ? state.error : tr("Molfar Vertep restarted without the update."))
       return
     }
     setPhase("idle")
-    setErr(tr("Chrysalis has not come back after five minutes. Check the window or log where it runs."))
+    setErr(tr("Molfar Vertep has not come back after five minutes. Check the window or log where it runs."))
   }
   const label = phase === "downloading" ? tr("Downloading…") : phase === "installing" ? tr("Installing…") : phase === "restarting" ? tr("Restarting…") : tr("Update to {version}", { version: release.version })
   return { start, busy: phase !== "idle", label, err }
@@ -222,7 +222,7 @@ export function EngineUpdateButton() {
   if (!r?.newer) return null
   return r.asset ? <InstallButton release={r} /> : (
     <a className="rounded-full bg-accent/20 px-2 py-px font-medium text-11 text-ink transition-colors hover:bg-accent/30" href={r.url} target="_blank" rel="noreferrer noopener">
-      {tr("Chrysalis {version} is available", { version: r.version })}
+      {tr("Molfar Vertep {version} is available", { version: r.version })}
     </a>
   )
 }
@@ -250,7 +250,7 @@ function ReleaseRow(props: { info: ServerInfo }) {
   const r = release.data
   const failed = last.data?.phase === "failed" && last.data.error ? <p className="text-12 leading-4 text-danger">{tr("The last update did not work: {error}", { error: last.data.error })}</p> : null
   if (!r?.newer) {
-    const label = r ? tr("Chrysalis {version}, the latest version", { version: props.info.version }) : tr("Chrysalis {version}", { version: props.info.version })
+    const label = r ? tr("Molfar Vertep {version}, the latest version", { version: props.info.version }) : tr("Molfar Vertep {version}", { version: props.info.version })
     return (
       <div className="flex flex-col gap-1">
         <p className="text-12 text-ink-faint">{label}</p>
@@ -259,12 +259,12 @@ function ReleaseRow(props: { info: ServerInfo }) {
     )
   }
   const incompatible = r.incompatibleApps?.length
-    ? <p className="text-12 leading-4 text-warning">{tr("These apps say they need a different version of Chrysalis and may stop working after the update: {apps}", { apps: r.incompatibleApps.map((a) => `${a.name} (${a.needs})`).join(", ") })}</p>
+    ? <p className="text-12 leading-4 text-warning">{tr("These apps say they need a different version of Molfar Vertep and may stop working after the update: {apps}", { apps: r.incompatibleApps.map((a) => `${a.name} (${a.needs})`).join(", ") })}</p>
     : null
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-line px-3 py-2">
       <div className="flex items-center gap-2 text-13">
-        <span className="min-w-0 flex-1 text-ink">{tr("Chrysalis {version} is available", { version: r.version })}</span>
+        <span className="min-w-0 flex-1 text-ink">{tr("Molfar Vertep {version} is available", { version: r.version })}</span>
         <a className="text-accent underline" href={r.url} target="_blank" rel="noreferrer">{tr("Release page")}</a>
       </div>
       {failed}
@@ -315,7 +315,7 @@ export function ServerTab() {
   const d = info.data
   if (!d) {
     return (
-      <Pane title={tr("Server")} description={tr("How Chrysalis runs on this computer.")}>
+      <Pane title={tr("Server")} description={tr("How Molfar Vertep runs on this computer.")}>
         <div className="text-13 text-ink-faint">{info.loading ? tr("Loading…") : err}</div>
       </Pane>
     )
@@ -333,7 +333,7 @@ export function ServerTab() {
         <Section title={tr("Other devices")}>
           <Toggle
             label={tr("Allow other devices on my network")}
-            hint={tr("Open Chrysalis from your phone or another computer. Every account still needs its password.")}
+            hint={tr("Open Molfar Vertep from your phone or another computer. Every account still needs its password.")}
             checked={e.lan}
             locked={locked.lan}
             disabled={busy}
@@ -390,7 +390,7 @@ export function ServerTab() {
           />
           {d.installKind === "binary" || d.installKind === "npm" ? (
             <Toggle
-              label={tr("Open the browser when Chrysalis starts")}
+              label={tr("Open the browser when Molfar Vertep starts")}
               checked={e.openBrowser}
               locked={locked.openBrowser}
               disabled={busy}
@@ -403,7 +403,7 @@ export function ServerTab() {
           <PathRow label={tr("Config file")} value={d.configPath} />
           <PathRow label={tr("Data folder")} value={d.dataDir} />
           <p className="text-12 leading-4 text-ink-muted">
-            {tr("Every setting here is in the config file, with notes. Edit it with any text editor while Chrysalis is stopped.")}
+            {tr("Every setting here is in the config file, with notes. Edit it with any text editor while Molfar Vertep is stopped.")}
           </p>
         </Section>
 

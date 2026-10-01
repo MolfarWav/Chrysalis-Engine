@@ -1,6 +1,6 @@
 @echo off
 setlocal
-rem Chrysalis launcher (run from source).
+rem Molfar Vertep launcher (run from source).
 rem   start-chrysalis.bat          start (installs and builds only what is missing)
 rem   start-chrysalis.bat update            pull the current branch, reinstall, rebuild, then start
 rem   start-chrysalis.bat update <branch>   switch to <branch> from GitHub first (each Claude session works on its own branch)
@@ -18,7 +18,7 @@ set "ROOT=%~f2"
 if not exist "%ROOT%\package.json" set "ROOT=%USERPROFILE%\Chrysalis-Engine"
 shift
 shift
-title Chrysalis
+title Molfar Vertep
 cd /d "%ROOT%" || (echo Folder not found: %ROOT% & pause & exit /b 1)
 
 where bun >nul 2>nul || (echo Bun is not installed or not in PATH. Get it at https://bun.sh & pause & exit /b 1)
@@ -60,8 +60,8 @@ echo === Building the interface...
 call bun run build:client || (echo Build failed. & pause & exit /b 1)
 
 :run
-echo === Starting Chrysalis. Close this window or press Ctrl+C to stop.
+echo === Starting Molfar Vertep. Close this window or press Ctrl+C to stop.
 call bun start
 echo.
-echo Chrysalis stopped.
+echo Molfar Vertep stopped.
 pause

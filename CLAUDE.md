@@ -1,6 +1,8 @@
-# Chrysalis fork: how to work here
+# Molfar Vertep: how to work here
 
-A fork of Chrysalis Engine (AGPL-3.0-only, upstream ProjectChrysalis/Chrysalis-Engine).
+Molfar Vertep (repo MolfarWav/Molfar.Vertep) is a fork of Chrysalis Engine (AGPL-3.0-only,
+upstream ProjectChrysalis/Chrysalis-Engine). The product name shows as "Molfar Vertep";
+internal names (`chrysalis` command, paths, env vars, identifiers) stay upstream's so merges stay clean.
 Start every session with `.fork/STATE.md`, then the handoff it points to. This file
 holds the rules that do not change between tasks; the handoff holds the task.
 

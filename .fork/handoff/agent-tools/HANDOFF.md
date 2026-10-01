@@ -15,7 +15,7 @@ Each needs: which small-model group it belongs to (`src/agent/small-window.ts` G
 4. `web_fetch {url, maxBytes?}`: engine-side fetch with `src/net-guard.ts` (public hosts only), honoring the sandbox internet setting (`readSandboxSettings(p.sandbox).internet`); returns text (HTML stripped to readable text) capped. Group: web (new), shown when internet is on.
 5. `model_try {model?, system?, messages, maxTokens?}`: one test generation (cards, presets, prompts) through `svc.generate` with `source: "agent:try"` so the inspector shows it. Costs money: ask the user once per request (ask card with the model and an estimate), cap maxTokens. Group: new "try" or app.
 
-## Rename checklist (when the name is chosen)
+## Rename checklist: DONE 2026-10-01 (Molfar Vertep, see STATE.md)
 - `package.json` name/description, README title and intro (keep the fork notice and upstream credit, AGPL §5), `client/` titles and i18n strings that say "Chrysalis" (44 files mention it; user-facing ones only), logo, the `.fork/Chrysalis.bat` launcher text.
 - Keep: `chrysalis` in code identifiers, paths, `__chrysalis_dev`, data formats, the app Store URLs (apps still come from upstream's Store).
 - A GitHub repo rename is the user's action on GitHub.

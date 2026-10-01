@@ -56,13 +56,13 @@ for (const evt of ["uncaughtException", "unhandledRejection"] as const) {
 
 const runCmd = promisify(execFile);
 
-const HELP = `Chrysalis ${ENGINE_VERSION}
+const HELP = `Molfar Vertep ${ENGINE_VERSION}
 
 Usage: chrysalis [command] [options]
 
 Commands:
-  start                    Run Chrysalis (the default)
-  reset-password <user>    Give an account a new password (Chrysalis must be stopped)
+  start                    Run Molfar Vertep (the default)
+  reset-password <user>    Give an account a new password (Molfar Vertep must be stopped)
   paths                    Show where the config file and data folder are
   workspace [--user <u>]   Print what a coding agent needs: the workspace folder,
                            the API address, and the apps installed in it
@@ -162,7 +162,7 @@ function pickUser(dataDir: string, asked: unknown): string {
     if (!found) fail(`no account named "${asked}". Accounts: ${all.map((u) => u.username).join(", ") || "none yet"}`);
     return found.username;
   }
-  if (!all.length) fail("no accounts yet — start Chrysalis and create one first");
+  if (!all.length) fail("no accounts yet — start Molfar Vertep and create one first");
   if (all.length > 1) fail(`more than one account here: ${all.map((u) => u.username).join(", ")}. Say which with --user <name>.`);
   return all[0]!.username;
 }
@@ -336,7 +336,7 @@ function printWorkspace(dataDir: string, asUser: string | undefined): void {
     `account:   ${username}`,
     `workspace: ${p.root}`,
     `contract:  ${path.join(p.root, "AGENTS.md")}`,
-    `engine:    ${lock ? `${lock.url}  (running)` : "not running — start Chrysalis to use `chrysalis api`"}`,
+    `engine:    ${lock ? `${lock.url}  (running)` : "not running — start Molfar Vertep to use `chrysalis api`"}`,
   ];
   let apps: { id: string; name: string }[] = [];
   try {
@@ -365,13 +365,13 @@ written for whatever agent reads it, not just the built-in one. Saves reach
 open pages on their own; app source rebuilds in the browser.
 
 For the parts that are not files — whether an app built, what its page logged,
-which models are connected — call the API of the Chrysalis running here:
+which models are connected — call the API of the Molfar Vertep running here:
 
   ${me} api GET  /v1/apps
   ${me} api GET  /v1/apps/${apps[0]?.id ?? "<app>"}/build
   ${me} api POST /v1/apps/${apps[0]?.id ?? "<app>"}/build '{}'
 ${INSTALL_KIND === "binary" && !cliOnPath(dataDir) ? `
-That is this program's own path, because a downloaded Chrysalis is not on your
+That is this program's own path, because a downloaded Molfar Vertep is not on your
 PATH — plain \`chrysalis\` would not be recognized. To fix that once:
 
   ${me} install-cli` : ""}`);
@@ -395,7 +395,7 @@ async function callApi(dataDir: string, args: string[], asUser: string | undefin
   }
   const apiPath = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
   const live = await runningEngine(dataDir);
-  if (!live) fail("Chrysalis is not running. Start it, then run this again.");
+  if (!live) fail("Molfar Vertep is not running. Start it, then run this again.");
   // a body on the command line, or piped in
   let body = rest.join(" ").trim();
   if (!body && !process.stdin.isTTY && method !== "GET" && method !== "HEAD") {
@@ -443,7 +443,7 @@ async function callApi(dataDir: string, args: string[], asUser: string | undefin
 async function resetPassword(dataDir: string, username: string | undefined): Promise<void> {
   if (!username) fail("usage: chrysalis reset-password <user>");
   const live = await runningEngine(dataDir);
-  if (live) fail(`Chrysalis is running (${live.url}). Stop it first, then run this again.`);
+  if (live) fail(`Molfar Vertep is running (${live.url}). Stop it first, then run this again.`);
   const newer = dataFormatProblem(dataDir);
   if (newer) fail(newer);
   const users = new UserService(dataDir);
@@ -576,11 +576,11 @@ async function start(homeDir: string, dataDir: string, loaded: LoadedConfig): Pr
   const { config } = loaded;
 
   const live = await runningEngine(dataDir);
-  if (live) fail(`Chrysalis is already running with this data folder: ${live.url} (pid ${live.pid})`);
+  if (live) fail(`Molfar Vertep is already running with this data folder: ${live.url} (pid ${live.pid})`);
   const newer = dataFormatProblem(dataDir);
   if (newer) fail(newer);
 
-  log.info(`Chrysalis ${ENGINE_VERSION} (${INSTALL_KIND})`);
+  log.info(`Molfar Vertep ${ENGINE_VERSION} (${INSTALL_KIND})`);
   // A downloaded build is a folder someone unpacked, so `chrysalis` is not a
   // command until something makes it one. Asking people to run install-cli
   // first means the command line is only found by those who read far enough,
@@ -677,7 +677,7 @@ async function start(homeDir: string, dataDir: string, loaded: LoadedConfig): Pr
   writeLock(dataDir, { pid: process.pid, instance, url: selfUrl(config), startedAt: Date.now() });
   const setupLink = setupToken ? `${urls.local}/#setup=${setupToken}` : null;
   log.info("----------------------------------------------------------");
-  log.info(`Open Chrysalis:  ${setupLink ?? urls.local}`);
+  log.info(`Open Molfar Vertep:  ${setupLink ?? urls.local}`);
   for (const u of urls.lan) log.info(`On your network: ${u}`);
   if (!config.lan) log.info("Other devices:   off (set lan: true in config.yaml)");
   log.info(`Config file:     ${loaded.path}`);
@@ -688,7 +688,7 @@ async function start(homeDir: string, dataDir: string, loaded: LoadedConfig): Pr
   // after an update the browser is already open, waiting for this start
   const updated = firstRunAfterUpdate || cameBackFromUpdate;
   delete process.env.CHRYSALIS_UPDATED;
-  if (firstRunAfterUpdate) log.info(`Updated to Chrysalis ${ENGINE_VERSION}`);
+  if (firstRunAfterUpdate) log.info(`Updated to Molfar Vertep ${ENGINE_VERSION}`);
   if (config.openBrowser && !updated && (INSTALL_KIND === "binary" || INSTALL_KIND === "npm") && !process.env.container) {
     openBrowser(setupLink ?? urls.local);
   }

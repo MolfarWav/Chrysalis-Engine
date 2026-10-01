@@ -103,7 +103,7 @@ export async function api<T = any>(method: string, p: string, body?: unknown): P
       body: body === undefined ? undefined : JSON.stringify(body),
     })
   } catch {
-    throw new Error(tr("Connection lost. Is the Chrysalis server running?"))
+    throw new Error(tr("Connection lost. Is the Molfar Vertep server running?"))
   }
   return reply<T>(res)
 }
@@ -290,7 +290,7 @@ export async function previewAppFile(file: File): Promise<AppImportPreview & { f
   try {
     res = await fetch("/v1/apps/import", { method: "POST", headers: { "content-type": "application/zip" }, body: file })
   } catch {
-    throw new Error(tr("Connection lost. Is the Chrysalis server running?"))
+    throw new Error(tr("Connection lost. Is the Molfar Vertep server running?"))
   }
   return reply(res)
 }
@@ -347,7 +347,7 @@ export const profileApi = {
         body: JSON.stringify(password ? { password } : {}),
       })
     } catch {
-      throw new Error(tr("Connection lost. Is the Chrysalis server running?"))
+      throw new Error(tr("Connection lost. Is the Molfar Vertep server running?"))
     }
     if (!res.ok) await reply(res)
     const name = /filename="?([^";]+)"?/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "chrysalis-profile.zip"
@@ -366,7 +366,7 @@ export const profileApi = {
     try {
       res = await fetch("/v1/profile/import", { method: "POST", body: file })
     } catch {
-      throw new Error(tr("Connection lost. Is the Chrysalis server running?"))
+      throw new Error(tr("Connection lost. Is the Molfar Vertep server running?"))
     }
     return reply(res)
   },

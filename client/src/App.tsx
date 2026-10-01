@@ -58,7 +58,7 @@ function Logo(props: { size?: number }) {
   return (
     <img
       src="/client/chrysalis_logo.png"
-      alt="Chrysalis"
+      alt="Molfar Vertep"
       width={props.size ?? 20}
       height={props.size ?? 20}
       className="rounded-[4px]"
@@ -350,7 +350,7 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
           <header className="flex h-11 shrink-0 items-center gap-2 px-2 max-md:gap-1 max-md:px-1">
             <div className="flex items-center gap-2 pl-1 max-md:pl-0.5">
               <Logo />
-              <span className="text-14 font-medium text-ink max-md:hidden">Chrysalis</span>
+              <span className="text-14 font-medium text-ink max-md:hidden">Molfar Vertep</span>
             </div>
             <nav className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto pt-1" aria-label={tr("Tabs")}>
               {tabs.map((t, i) => (
@@ -504,7 +504,7 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
 function SplashScreen() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 bg-deep">
-      <img src="/client/chrysalis_logo.png" alt="Chrysalis" width={56} height={56} className="rounded-[10px]" style={{ width: "56px", height: "56px" }} />
+      <img src="/client/chrysalis_logo.png" alt="Molfar Vertep" width={56} height={56} className="rounded-[10px]" style={{ width: "56px", height: "56px" }} />
       <TextShimmer text="Loading…" />
     </div>
   )
@@ -897,7 +897,7 @@ function SetupForm(props: { onDone: () => Promise<void> }) {
       <p className="text-13 leading-5 text-ink-muted">{tr("Create the first account. It can add more people later in Settings.")}</p>
       {!fromUrl ? <>
           <input className={inputClass} placeholder={tr("setup link or code")} autoComplete="off" value={token} onChange={(e) => setToken(e.currentTarget.value)} />
-          <p className="-mt-1.5 text-12 leading-4 text-ink-muted">{tr("Chrysalis shows this link where it started, and in its log file.")}</p>
+          <p className="-mt-1.5 text-12 leading-4 text-ink-muted">{tr("Molfar Vertep shows this link where it started, and in its log file.")}</p>
         </> : null}
       <input className={inputClass} placeholder={tr("username")} autoComplete="username" autoCapitalize="none" value={username} onChange={(e) => setUsername(e.currentTarget.value)} />
       <input className={inputClass} type="password" placeholder={tr("password")} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.currentTarget.value)} />
@@ -966,7 +966,7 @@ function AuthScreen(props: { onLogin: (username: string, password?: string) => P
         <div className="flex items-center gap-3">
           <Logo size={36} />
           <div>
-            <div className="text-16 font-medium text-ink">Chrysalis</div>
+            <div className="text-16 font-medium text-ink">Molfar Vertep</div>
             <div className="text-12 text-ink-muted">{setup ? tr("Welcome") : tr("Pick your user to continue")}</div>
           </div>
         </div>
@@ -1038,7 +1038,7 @@ function AuthScreen(props: { onLogin: (username: string, password?: string) => P
               <span className="text-13 text-ink-muted">{tr("Reset {username}'s password", { username: selected!.username })}</span>
             </div>
             {codeSent ? <><p className="text-12 leading-4 text-ink-muted">
-                {tr("The code is in the Chrysalis window or its log file. It works for 10 minutes.")}
+                {tr("The code is in the Molfar Vertep window or its log file. It works for 10 minutes.")}
               </p>
               <input className={inputClass} placeholder={tr("reset code")} autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.currentTarget.value)} />
               <input className={inputClass} type="password" placeholder={tr("new password")} autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.currentTarget.value)} />
@@ -1053,7 +1053,7 @@ function AuthScreen(props: { onLogin: (username: string, password?: string) => P
                 {tr("Reset and sign in")}
               </button></> : <>
                   <p className="text-12 leading-4 text-ink-muted">
-                    {tr("A one-time code will appear in the Chrysalis window and its log file.")}
+                    {tr("A one-time code will appear in the Molfar Vertep window and its log file.")}
                   </p>
                   <button
                     type="submit"
@@ -1128,7 +1128,7 @@ function LaunchPicker(props: {
       <div className="mx-auto flex w-full max-w-[960px] min-h-0 flex-1 flex-col px-6 py-8 max-md:px-4">
         <div className="flex items-center gap-3 pb-4">
           <Logo size={32} />
-          <h1 className="text-20 font-medium text-ink">{welcome ? tr("Welcome to Chrysalis") : tr("Where to?")}</h1>
+          <h1 className="text-20 font-medium text-ink">{welcome ? tr("Welcome to Molfar Vertep") : tr("Where to?")}</h1>
         </div>
         {welcome ? <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <WelcomeApps
@@ -1283,7 +1283,7 @@ function LaunchPicker(props: {
       </div>
       {props.launch?.engine ? (
           <div className="flex items-center gap-2 px-1 pb-1 pt-0.5 text-11 text-ink-faint">
-            <span>{tr("Chrysalis engine v{version}", { version: props.launch.engine.version })}</span>
+            <span>{tr("Molfar Vertep v{version}", { version: props.launch.engine.version })}</span>
             {props.launch.engine.admin ? <EngineUpdateButton /> : null}
             {props.launch.engine.repository ? <a
                 href={props.launch.engine.repository}
@@ -2010,9 +2010,9 @@ function ImportAppDialog(props: { from: StoreApp | null; onClose: () => void; on
               {from?.official ? <p className="rounded-lg border border-line p-3 text-12 leading-4 text-ink-muted">
                   {tr("An official app, made by the Chrysalis maintainers. Its plugins get the permissions listed above. You can delete it any time.")}
                 </p> : preview.kind === "file" ? <p className="rounded-lg border border-warning/30 bg-warning-soft/10 p-3 text-12 leading-4 text-ink-muted">
-                  {tr("An app from a file runs real code on your Chrysalis server: plugins can read and write the app's data, call models, and reach the hosts listed above. Only import files you made or trust. Your existing apps and data are untouched.")}
+                  {tr("An app from a file runs real code on your Molfar Vertep server: plugins can read and write the app's data, call models, and reach the hosts listed above. Only import files you made or trust. Your existing apps and data are untouched.")}
                 </p> : <p className="rounded-lg border border-warning/30 bg-warning-soft/10 p-3 text-12 leading-4 text-ink-muted">
-                {tr("Community apps run real code on your Chrysalis server: plugins can read and write the app's data, call models, and reach the hosts listed above. Only import repositories you trust. Your existing apps and data are untouched; you can delete it any time.")}
+                {tr("Community apps run real code on your Molfar Vertep server: plugins can read and write the app's data, call models, and reach the hosts listed above. Only import repositories you trust. Your existing apps and data are untouched; you can delete it any time.")}
               </p>}
               <div className="flex justify-end gap-2">
                 <Button variant="ghost-muted" size="small" onClick={props.onClose}>{tr("Cancel")}</Button>
@@ -2205,7 +2205,7 @@ export function AppPluginsDialog(props: { appId: string; open: boolean; onClose:
                       {dataEgressWarning(preview!.permissions, preview!.networkHosts) ? <p className="text-11 leading-4 text-warning">{dataEgressWarning(preview!.permissions, preview!.networkHosts)}</p> : null}
                       {localNetworkWarning(preview!.permissions, preview!.networkHosts) ? <p className="text-11 leading-4 text-warning">{localNetworkWarning(preview!.permissions, preview!.networkHosts)}</p> : null}
                       <p className="rounded-lg border border-warning/30 bg-warning-soft/10 p-2.5 text-12 leading-4 text-ink-muted">
-                        {tr("Community plugins run real code on your Chrysalis server. This one gets the capabilities above, installed into {appId} only. App updates keep it. Import repositories you trust.", { appId: props.appId })}
+                        {tr("Community plugins run real code on your Molfar Vertep server. This one gets the capabilities above, installed into {appId} only. App updates keep it. Import repositories you trust.", { appId: props.appId })}
                       </p>
                       <div className="flex justify-end gap-2">
                         <Button variant="ghost-muted" size="small" onClick={() => setPreview(null)}>{tr("Back")}</Button>

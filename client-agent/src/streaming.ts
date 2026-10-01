@@ -27,6 +27,8 @@ export interface StreamEvent {
   multiSelect?: boolean
   questions?: AskQuestion[]
   detail?: string
+  /** "diff": detail is a unified diff */
+  detailKind?: "diff"
 }
 
 export type StreamDeltaEvent = StreamEvent & { type: "text" | "thinking" }

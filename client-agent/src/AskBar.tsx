@@ -10,6 +10,29 @@ function initialPicks(questions: AskQuestion[]): string[][] {
   return questions.map((q) => (q.options ?? []).filter((o) => o.recommended).map((o) => o.label).slice(0, q.multiSelect ? undefined : 1))
 }
 
+/** How one line of a unified diff reads: added and removed lines tinted,
+ *  hunk markers and file headers muted. */
+export function diffLineClass(line: string): string {
+  if (line.startsWith("+++") || line.startsWith("---")) return "text-muted-foreground font-semibold"
+  if (line.startsWith("@@")) return "text-muted-foreground"
+  if (line.startsWith("+")) return "bg-emerald-500/15"
+  if (line.startsWith("-")) return "bg-red-500/15"
+  return ""
+}
+
+/** A unified diff in a scrolling monospace block, one colored row per line. */
+export function DiffBlock({ text }: { text: string }): ReactNode {
+  return (
+    <pre className="bg-muted/40 mt-1.5 max-h-[40vh] overflow-auto rounded-lg py-1 font-mono text-xs leading-relaxed" data-testid="ask-diff">
+      {text.split("\n").map((line, n) => ({ line, key: String(n) })).map((row) => (
+        <div key={row.key} className={cn("min-w-max px-2.5 whitespace-pre", diffLineClass(row.line))}>
+          {row.line || " "}
+        </div>
+      ))}
+    </pre>
+  )
+}
+
 /** One choice: a pill for a bare label, a row with its explanation otherwise. */
 function OptionButton({ option, picked, rich, onClick }: { option: AskOption; picked: boolean; rich: boolean; onClick: () => void }): ReactNode {
   return (
@@ -100,7 +123,13 @@ function AskCard(): ReactNode {
     <div className="border-ring/40 bg-card flex max-h-[60vh] flex-col gap-2 overflow-y-auto rounded-xl border p-3">
       <div>
         <p className="text-sm font-medium whitespace-pre-wrap">{ask.question}</p>
-        {ask.detail ? <p className="text-muted-foreground mt-1 text-xs whitespace-pre-wrap">{ask.detail}</p> : null}
+        {ask.detail ? (
+          ask.detailKind === "diff" ? (
+            <DiffBlock text={ask.detail} />
+          ) : (
+            <p className="text-muted-foreground mt-1 text-xs whitespace-pre-wrap">{ask.detail}</p>
+          )
+        ) : null}
       </div>
       {questions.map((q, qi) => {
         const rich = (q.options ?? []).some((o) => o.description) || !instant

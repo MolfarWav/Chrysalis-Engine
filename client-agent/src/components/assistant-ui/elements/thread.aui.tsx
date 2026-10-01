@@ -400,7 +400,10 @@ const Composer: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
   const aui = useAui();
   const enterSends = useEnterSends();
   const sessionId = useAgentStore((s) => s.sessionId);
+  // bumped when a draft is placed in the new chat from outside (a skill's "Improve with the agent")
+  const draftSeed = useAgentStore((s) => s.draftSeed);
   const booting = useRef(true);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: draftSeed only re-runs the load for an unchanged thread
   useEffect(() => {
     const key = draftKey(sessionId);
     const stored = readDraft(key);
@@ -422,7 +425,7 @@ const Composer: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
         else localStorage.removeItem(key);
       } catch { /* storage unavailable */ }
     });
-  }, [aui, sessionId]);
+  }, [aui, sessionId, draftSeed]);
   return (
     <ComposerPrimitive.Unstable_TriggerPopoverRoot>
       <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">

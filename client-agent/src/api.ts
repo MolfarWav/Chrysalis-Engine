@@ -216,9 +216,22 @@ export async function agentCommands(): Promise<UserCommand[]> {
 export interface AgentSkill {
   name: string
   description: string
-  /** "global" or "app:<id>" */
+  /** "global", "app:<id>" or "project:<name>" */
   scope: string
   file: string
+  /** shipped with the engine, no workspace copy */
+  builtin?: boolean
+  /** a workspace copy replacing a built-in skill ("customized") */
+  overrides?: boolean
+}
+
+/** One skill in full: the SKILL.md text and the extra files beside it. */
+export interface AgentSkillDetail {
+  file: string
+  text: string
+  builtin: boolean
+  overrides: boolean
+  files: string[]
 }
 
 export interface AgentMemory {
@@ -232,7 +245,13 @@ export const memoryApi = {
   add: (scope: string, entry: string) => api<{ ok: boolean; line: string }>("POST", "/v1/agent/memory", { scope, entry }),
   forget: (scope: string, line: string) => api<{ ok: boolean }>("POST", "/v1/agent/memory/forget", { scope, line }),
   skill: (scope: string, name: string) =>
-    api<{ file: string; text: string }>("GET", `/v1/agent/skills/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`),
+    api<AgentSkillDetail>("GET", `/v1/agent/skills/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`),
+  /** an extra file of a skill, e.g. references/table.md */
+  skillFile: (scope: string, name: string, file: string) =>
+    api<{ file: string; text: string }>("GET", `/v1/agent/skills/${encodeURIComponent(scope)}/${encodeURIComponent(name)}?file=${encodeURIComponent(file)}`),
+  /** create or overwrite the workspace SKILL.md; for a built-in skill this makes the customized copy */
+  saveSkill: (scope: string, name: string, description: string, body: string) =>
+    api<{ ok: boolean; file: string }>("PUT", `/v1/agent/skills/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`, { description, body }),
   deleteSkill: (scope: string, name: string) =>
     api<{ ok: boolean }>("DELETE", `/v1/agent/skills/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`),
 }

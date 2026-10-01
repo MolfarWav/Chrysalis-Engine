@@ -34,6 +34,7 @@ export interface PendingAsk {
   /** several questions in one card, answered as one line each */
   questions?: AskQuestion[]
   detail?: string
+  detailKind?: "diff"
 }
 
 export interface Banner {
@@ -123,6 +124,10 @@ export interface AgentState {
   reloadCurrent: () => Promise<void>
   editAt: (at: number, text: string) => Promise<void>
   newChat: (project?: string) => void
+  /** bumps whenever a draft is put in the new chat's composer from outside it */
+  draftSeed: number
+  /** start a new chat with `text` already in its composer */
+  newChatWith: (text: string) => void
   send: (text: string, images?: Array<{ data: string; mimeType: string }>, urls?: string[]) => Promise<void>
   stop: () => Promise<void>
   answer: (text: string) => Promise<void>
@@ -252,6 +257,7 @@ export const useAgent = create<AgentState>()((set, get) => {
     projectDetails: {},
     view: { kind: "chat" },
     draftProject: null,
+    draftSeed: 0,
     mode: storedMode(),
     wsDown: false,
     usage: null,
@@ -355,6 +361,13 @@ export const useAgent = create<AgentState>()((set, get) => {
       }
       await get().reloadCurrent()
       await get().send(text)
+    },
+
+    newChatWith: (text) => {
+      // the composer keeps unsent text under a per-thread key; "new" is the chat not created yet
+      prefs.set("chrysalis.agent.draft.new", text)
+      get().newChat()
+      set((st) => ({ draftSeed: st.draftSeed + 1 }))
     },
 
     newChat: (project) => {
@@ -738,6 +751,7 @@ function foldStream(ev: StreamEvent): void {
           multiSelect: ev.multiSelect,
           questions: ev.questions,
           detail: ev.detail,
+          detailKind: ev.detailKind,
         },
       })
     return

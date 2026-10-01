@@ -1,6 +1,6 @@
 {
   "name": "chrysalis-engine",
-  "version": "1.0.2",
+  "version": "0.1.0",
   "private": true,
   "description": "Chrysalis Engine: the AI frontend you can reshape just by asking",
   "type": "module",
@@ -62,5 +62,5 @@
     "typescript": "^5.8.0",
     "zod": "^4.4.3"
   },
-  "repository": "https://github.com/ProjectChrysalis/Chrysalis-Engine"
+  "repository": "https://github.com/MolfarWav/Chrysalis-Engine-Molfar"
 }

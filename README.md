@@ -9,6 +9,11 @@
   <a href="https://github.com/ProjectChrysalis/Chrysalis-Engine/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ProjectChrysalis/Chrysalis-Engine/ci.yml?branch=main&label=CI" alt="CI status" /></a>
 </p>
 
+> **This is a modified fork** of [Chrysalis Engine](https://github.com/ProjectChrysalis/Chrysalis-Engine),
+> maintained at [MolfarWav/Chrysalis-Engine-Molfar](https://github.com/MolfarWav/Chrysalis-Engine-Molfar)
+> under the same license (AGPL-3.0-only). Versions count from 0.1.0. What changed: [CHANGELOG.md](CHANGELOG.md).
+> The rest of this README is upstream's and describes upstream releases.
+
 # Chrysalis
 
 **The AI frontend you can reshape just by asking.**

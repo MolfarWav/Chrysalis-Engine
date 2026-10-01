@@ -40,3 +40,15 @@
 - The user tests on free OpenRouter models.
 - The user will ask for an export of this state for their local app.
 - Next task, handed off (2026-10-01): eight items (move chats between projects, scalable memory, the two workspace debts, default instructions + protected paths, checkpoints, better ask_user, prompt inspector, finishing projects). Spec, verified code refs and open questions: `.fork/handoff/next/HANDOFF.md`.
+- Branch `claude/fervent-thompson-tej67n` continues `claude/hopeful-brown-vb53w4` (2026-10-01).
+- Done from the handoff (2026-10-01):
+  - 3.1 Move chats: `{type:"project"}` record, last wins over the start record (`moveSession`, `sessionProject` in `agent.ts`); `POST /v1/agent/sessions/:id/project`; truncate/fork keep it. UI: chat menu "Move to project" + drag onto a project row.
+  - 3.8 Save a reply to project files (action on assistant messages in project chats). Workspace AGENTS.md v13 mentions `projects/` and the single `git` tool (old git_status/git_commit names were stale). Edited copies keep their text (digest).
+  - 3.6 ask_user: options as strings or `{label, description, recommended}`, `multiSelect`, `questions` (several per card). `prepareArguments` normalizes loose shapes from free models. Prompt rule: ask 2-6 questions before building an app/UI/large feature. Checked end to end with a mock OpenAI server in Chromium.
+  - 3.3 Prompt for the built-in agent (Archivarius onTick, recallMemories): `.fork/handoff/next/workspace-agent-task.md`. Not run yet: the user pastes it.
+- User decisions for the rest (2026-10-01):
+  - 3.2 memory: topic files + index (short MEMORY.md always in the prompt, `memory/<topic>.md` listed by name + first line) AND a `memory_search` tool. Not consolidation, not inline tags.
+  - 3.4 "src" means `apps/<id>/src/` (protected paths: confirm in an ask card). Default instructions: ONE text, "Restore default" replaces it all (old text stays in git history).
+  - 3.5 the user does not remember what broke; Restore puts back code only (`apps/<id>/` without `data/`).
+- Next: 3.5 checkpoints, 3.4 default instructions + protected paths, 3.7 prompt inspector, 3.2 memory.
+

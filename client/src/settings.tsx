@@ -742,6 +742,7 @@ function AgentTab() {
       <div className="flex flex-col gap-6 pb-4">
         <InternetSection />
         <AutoCompactSection />
+        <SmallModelSection />
         <div className="flex flex-col gap-2">
           <h3 className="text-13 font-medium text-ink">{tr("Agent instructions")}</h3>
           <p className="text-12 text-ink-muted">
@@ -770,6 +771,69 @@ function AgentTab() {
         <ProtectedFilesSection />
       </div>
     </Pane>
+  )
+}
+
+type SmallModelMode = "auto" | "on" | "off"
+
+/** Small-model mode: a compact system prompt and only the core tools, for
+ *  models with a small or unknown context window. */
+function SmallModelSection() {
+  const [mode, setMode] = useState<SmallModelMode>("auto")
+  const [loaded, setLoaded] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [err, setErr] = useState("")
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const s = await api<{ smallModelMode?: SmallModelMode }>("GET", "/v1/settings")
+        if (s.smallModelMode === "on" || s.smallModelMode === "off") setMode(s.smallModelMode)
+      } catch {}
+      setLoaded(true)
+    })()
+  }, [])
+
+  const change = async (next: SmallModelMode) => {
+    const prev = mode
+    setMode(next)
+    setBusy(true)
+    setErr("")
+    try {
+      await api("PUT", "/v1/settings", { smallModelMode: next })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+    } catch (e) {
+      setMode(prev)
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="text-13 font-medium text-ink">{tr("Small-model mode")}</h3>
+      <p className="text-12 leading-4 text-ink-muted">
+        {tr("For models with a small context window: a shorter system prompt and only the core tools, so more of the window is left for the conversation. The agent loads longer guides and extra tools when a task needs them.")}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          className={`${inputClass} max-w-[360px] flex-none`}
+          aria-label={tr("Small-model mode")}
+          value={mode}
+          disabled={!loaded || busy}
+          onChange={(e) => void change(e.currentTarget.value as SmallModelMode)}
+        >
+          <option value="auto">{tr("Auto (32k tokens or less, or unknown)")}</option>
+          <option value="on">{tr("On")}</option>
+          <option value="off">{tr("Off")}</option>
+        </select>
+        {saved ? <span className="text-12 text-success">{tr("Saved")}</span> : null}
+      </div>
+      {err ? <div className="text-12 text-danger">{err}</div> : null}
+    </div>
   )
 }
 

@@ -218,7 +218,8 @@ export async function listProviders(): Promise<EngineProvider[]> {
 }
 
 export const personaApi = {
-  get: () => api<{ persona: string }>("GET", "/v1/settings/persona").then((r) => r.persona ?? ""),
+  /** `default` is the engine's built-in instructions, for "Restore default". */
+  get: () => api<{ persona: string; default: string }>("GET", "/v1/settings/persona").then((r) => ({ persona: r.persona ?? "", default: r.default ?? "" })),
   put: (persona: string) => api("PUT", "/v1/settings/persona", { persona }),
 }
 

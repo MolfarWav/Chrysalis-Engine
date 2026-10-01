@@ -706,20 +706,35 @@ function AgentTab() {
   const [draft, setDraft] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const value = () => (draft !== null ? draft! : persona.data ?? "")
-  const dirty = () => draft !== null && draft !== (persona.data ?? "")
+  const [err, setErr] = useState("")
+  const current = persona.data?.persona ?? ""
+  const defaults = persona.data?.default ?? ""
+  const value = () => (draft !== null ? draft : current)
+  const dirty = () => draft !== null && draft !== current
 
-  const save = async () => {
+  const flash = () => {
+    setSaved(true)
+    setTimeout(() => setSaved(false), 1500)
+  }
+
+  const write = async (text: string) => {
     setSaving(true)
+    setErr("")
     try {
-      await personaApi.put(draft ?? "")
-      persona.mutate(draft ?? "")
+      await personaApi.put(text)
+      persona.mutate({ persona: text, default: defaults })
       setDraft(null)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 1500)
+      flash()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
     } finally {
       setSaving(false)
     }
+  }
+
+  const restore = () => {
+    if (!window.confirm(tr("Replace your instructions with the default ones? The current text stays in the workspace history."))) return
+    void write(defaults)
   }
 
   return (
@@ -730,7 +745,7 @@ function AgentTab() {
         <div className="flex flex-col gap-2">
           <h3 className="text-13 font-medium text-ink">{tr("Agent instructions")}</h3>
           <p className="text-12 text-ink-muted">
-            {tr("Appended to your agent's system prompt (saved to persona.md, your agent can also edit it for you).")}
+            {tr("Appended to your agent's system prompt (saved to persona.md). Your agent can change it only after you allow it.")}
           </p>
           <textarea
             className="min-h-[160px] w-full resize-y rounded-lg border border-line bg-panel px-3 py-2 text-13 leading-5 text-ink outline-none placeholder:text-ink-faint focus:border-line-focus"
@@ -738,18 +753,101 @@ function AgentTab() {
             value={value()}
             onChange={(e) => setDraft(e.currentTarget.value)}
           />
-          <div className="flex items-center gap-2">
-            <Button variant="neutral" size="normal" disabled={!dirty() || saving} onClick={save}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="neutral" size="normal" disabled={!dirty() || saving} onClick={() => void write(draft ?? "")}>
               {tr("Save instructions")}
             </Button>
             {dirty() ? <Button variant="ghost" size="normal" onClick={() => setDraft(null)}>
                 {tr("Discard")}
               </Button> : null}
+            {defaults && value() !== defaults ? <Button variant="ghost" size="normal" disabled={saving} onClick={restore}>
+                {tr("Restore default instructions")}
+              </Button> : null}
             {saved ? <span className="text-12 text-success">{tr("Saved")}</span> : null}
           </div>
+          {err ? <div className="text-12 text-danger">{err}</div> : null}
         </div>
+        <ProtectedFilesSection />
       </div>
     </Pane>
+  )
+}
+
+interface Protection {
+  paths: string[]
+  defaults: string[]
+  always: string[]
+}
+
+/** Files the agent may change only after the user clicks Allow in the chat.
+ *  Saved outside the workspace, so the agent cannot loosen it for itself. */
+function ProtectedFilesSection() {
+  const res = useResource(() => api<Protection>("GET", "/v1/settings/agent-protection"))
+  const [draft, setDraft] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [err, setErr] = useState("")
+  const paths = res.data?.paths ?? []
+  const defaults = res.data?.defaults ?? []
+  const lines = (text: string) => text.split("\n").map((l) => l.trim()).filter(Boolean)
+  const value = () => (draft !== null ? draft : paths.join("\n"))
+  const dirty = () => draft !== null && lines(draft).join("\n") !== paths.join("\n")
+
+  const write = async (next: string[]) => {
+    if (!res.data) return
+    setBusy(true)
+    setErr("")
+    try {
+      const r = await api<{ paths: string[] }>("PUT", "/v1/settings/agent-protection", { paths: next })
+      res.mutate({ ...res.data, paths: r.paths })
+      setDraft(null)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const reset = () => {
+    if (!window.confirm(tr("Reset the protected files to the defaults?"))) return
+    void write(defaults)
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="text-13 font-medium text-ink">{tr("Protected files")}</h3>
+      <p className="text-12 leading-4 text-ink-muted">
+        {tr("Your agent changes these only after you allow it in the chat, once per request. Patterns: * is one folder level, ** any depth.")}
+      </p>
+      <textarea
+        className="min-h-[96px] w-full resize-y rounded-lg border border-line bg-panel px-3 py-2 font-mono text-12 leading-5 text-ink outline-none placeholder:text-ink-faint focus:border-line-focus"
+        aria-label={tr("Protected files")}
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+        value={value()}
+        disabled={!res.data}
+        onChange={(e) => setDraft(e.currentTarget.value)}
+      />
+      {res.data?.always.length ? <p className="break-words text-12 leading-4 text-ink-muted">
+          {tr("Always protected: {paths}", { paths: res.data.always.join(", ") })}
+        </p> : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="neutral" size="normal" disabled={!dirty() || busy} onClick={() => void write(lines(draft ?? ""))}>
+          {tr("Save")}
+        </Button>
+        {dirty() ? <Button variant="ghost" size="normal" disabled={busy} onClick={() => { setDraft(null); setErr("") }}>
+            {tr("Discard")}
+          </Button> : null}
+        <Button variant="ghost" size="normal" disabled={!res.data || busy} onClick={reset}>
+          {tr("Reset to defaults")}
+        </Button>
+        {saved ? <span className="text-12 text-success">{tr("Saved")}</span> : null}
+      </div>
+      {err ? <div className="text-12 text-danger">{err}</div> : null}
+    </div>
   )
 }
 

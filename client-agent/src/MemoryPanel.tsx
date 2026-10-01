@@ -5,13 +5,14 @@
 // copy that replaces it, and reset by deleting that copy).
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { ArrowCounterClockwise, ArrowLeft, Brain, FileText, PencilSimple, Plus, Sparkle, Trash } from "@phosphor-icons/react"
+import { ArrowCounterClockwise, ArrowLeft, ArrowsLeftRight, Brain, CaretRight, FileText, MagnifyingGlass, PencilSimple, Plus, Sparkle, Trash } from "@phosphor-icons/react"
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
-import { memoryApi, type AgentMemory, type AgentSkill, type AgentSkillDetail } from "./api"
+import { memoryApi, type AgentMemory, type AgentSkill, type AgentSkillDetail, type MemoryHit, type ScopeMemory } from "./api"
 import { useAgent } from "./store"
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,47}$/
@@ -34,18 +35,132 @@ function parseSkill(text: string): { description: string; body: string } {
 
 const entriesOf = (text: string): string[] => text.split("\n").filter((l) => l.startsWith("- "))
 
-function MemorySection({ title, file, scope, text, onChange, onError }: {
-  title: string
-  file: string
+const CORE = "__core__"
+const NEW_TOPIC = "__new__"
+const topicOk = (name: string): boolean => NAME_RE.test(name) && name !== "memory"
+const TOPIC_HINT = "Lowercase letters, digits and dashes, up to 48 characters. Not “memory”."
+const selectClass =
+  "bg-muted/70 hover:bg-muted focus-visible:border-ring focus-visible:ring-ring/50 h-9 min-w-0 rounded-lg border border-transparent px-2 text-sm outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50"
+
+type Run = (fn: () => Promise<unknown>) => Promise<void>
+
+/** A topic name field with the regex hint; shows the hint in red once the name is wrong. */
+function TopicNameInput({ value, onChange, disabled, autoFocus }: { value: string; onChange: (v: string) => void; disabled?: boolean; autoFocus?: boolean }): ReactNode {
+  const bad = value !== "" && !topicOk(value)
+  return (
+    <div className="grid min-w-0 flex-1 gap-1">
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value.trim())}
+        placeholder="topic-name"
+        aria-label="New topic name"
+        aria-invalid={bad}
+        disabled={disabled}
+        autoFocus={autoFocus}
+      />
+      <span className={bad ? "text-destructive text-xs" : "text-muted-foreground text-xs"}>{TOPIC_HINT}</span>
+    </div>
+  )
+}
+
+/** One stored entry: its text, a Move action and Forget. `topic` is where it lives now (null = core). */
+function EntryRow({ line, scope, topic, topics, busy, run }: {
+  line: string
   scope: string
-  text: string
+  topic: string | null
+  topics: string[]
+  busy: boolean
+  run: Run
+}): ReactNode {
+  const [moving, setMoving] = useState(false)
+  const [naming, setNaming] = useState(false)
+  const [name, setName] = useState("")
+  const move = (to: string | null) =>
+    run(async () => {
+      await memoryApi.move(scope, line, topic, to)
+      setMoving(false)
+      setNaming(false)
+      setName("")
+    })
+  const targets = topics.filter((t) => t !== topic)
+  return (
+    <li className="bg-muted/40 grid gap-2 rounded-lg px-3 py-2 text-sm">
+      <div className="flex items-start gap-1">
+        <span className="min-w-0 flex-1 break-words">{line.slice(2)}</span>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Move this entry"
+          aria-expanded={moving}
+          title="Move to…"
+          disabled={busy}
+          onClick={() => {
+            setMoving((m) => !m)
+            setNaming(false)
+          }}
+        >
+          <ArrowsLeftRight />
+        </Button>
+        <Button variant="ghost" size="icon-xs" aria-label="Forget this entry" disabled={busy} onClick={() => void run(() => memoryApi.forget(scope, line, topic))}>
+          <Trash />
+        </Button>
+      </div>
+      {moving ? (
+        <div className="grid gap-2">
+          <select
+            className={cn(selectClass, "w-full sm:w-56")}
+            aria-label="Move to…"
+            value=""
+            disabled={busy}
+            onChange={(e) => {
+              const v = e.target.value
+              if (v === NEW_TOPIC) setNaming(true)
+              else void move(v === CORE ? null : v)
+            }}
+          >
+            <option value="" disabled>
+              Move to…
+            </option>
+            {topic !== null ? <option value={CORE}>Core</option> : null}
+            {targets.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+            <option value={NEW_TOPIC}>New topic…</option>
+          </select>
+          {naming ? (
+            <div className="flex items-start gap-2">
+              <TopicNameInput value={name} onChange={setName} disabled={busy} autoFocus />
+              <Button variant="outline" size="sm" className="h-9" disabled={busy || !topicOk(name)} onClick={() => void move(name)}>
+                Move
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </li>
+  )
+}
+
+function MemorySection({ title, scope, memory, onChange, onError }: {
+  title: string
+  scope: string
+  memory: ScopeMemory
   onChange: () => void
   onError: (e: unknown) => void
 }): ReactNode {
   const [draft, setDraft] = useState("")
+  const [pick, setPick] = useState(CORE)
+  const [newName, setNewName] = useState("")
   const [busy, setBusy] = useState(false)
-  const entries = entriesOf(text)
-  const run = async (fn: () => Promise<unknown>) => {
+  const core = entriesOf(memory.text)
+  const topicNames = memory.topics.map((t) => t.topic)
+  const choice = pick === CORE || pick === NEW_TOPIC || topicNames.includes(pick) ? pick : CORE
+  const target = choice === CORE ? null : choice === NEW_TOPIC ? newName : choice
+  const targetOk = choice !== NEW_TOPIC || topicOk(newName)
+  const empty = core.length === 0 && memory.topics.length === 0
+  const run: Run = async (fn) => {
     setBusy(true)
     try {
       await fn()
@@ -60,46 +175,95 @@ function MemorySection({ title, file, scope, text, onChange, onError }: {
     <section className="grid gap-2">
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-sm font-medium">{title}</h3>
-        <span className="text-muted-foreground truncate font-mono text-xs">{file}</span>
+        <span className="text-muted-foreground truncate font-mono text-xs">{memory.file}</span>
       </div>
-      {entries.length ? (
-        <ul className="grid gap-1">
-          {entries.map((line) => (
-            <li key={line} className="bg-muted/40 group flex items-start gap-2 rounded-lg px-3 py-2 text-sm">
-              <span className="min-w-0 flex-1 break-words">{line.slice(2)}</span>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Forget this entry"
-                disabled={busy}
-                onClick={() => void run(() => memoryApi.forget(scope, line))}
-              >
-                <Trash />
-              </Button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-muted-foreground text-sm">Nothing here yet.</p>
-      )}
+      {empty ? <p className="text-muted-foreground text-sm">Nothing here yet.</p> : null}
+      {core.length ? (
+        <div className="grid gap-1">
+          <h4 className="text-muted-foreground text-xs font-medium">Core (always in the prompt)</h4>
+          <ul className="grid gap-1">
+            {core.map((line) => (
+              <EntryRow key={line} line={line} scope={scope} topic={null} topics={topicNames} busy={busy} run={run} />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {memory.topics.map((t) => {
+        const lines = entriesOf(t.text)
+        return (
+          <Collapsible key={t.topic} className="grid gap-1">
+            <CollapsibleTrigger className="group/trig hover:bg-muted/60 flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-1 text-left text-sm font-medium">
+              <CaretRight size={14} className="text-muted-foreground shrink-0 transition-transform group-data-[panel-open]/trig:rotate-90" />
+              <span className="min-w-0 flex-1 truncate">{t.title ?? t.topic}</span>
+              <span className="text-muted-foreground shrink-0 text-xs font-normal">{lines.length}</span>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <ul className="grid gap-1 pl-5">
+                {lines.map((line) => (
+                  <EntryRow key={line} line={line} scope={scope} topic={t.topic} topics={topicNames} busy={busy} run={run} />
+                ))}
+              </ul>
+            </CollapsibleContent>
+          </Collapsible>
+        )
+      })}
       <form
-        className="flex gap-2"
+        className="grid gap-2"
         onSubmit={(e) => {
           e.preventDefault()
           const entry = draft.trim()
-          if (!entry) return
+          if (!entry || !targetOk || (choice === NEW_TOPIC && !newName)) return
           void run(async () => {
-            await memoryApi.add(scope, entry)
+            await memoryApi.add(scope, entry, target)
             setDraft("")
+            if (choice === NEW_TOPIC) {
+              setPick(newName)
+              setNewName("")
+            }
           })
         }}
       >
-        <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add an entry…" disabled={busy} />
-        <Button type="submit" variant="outline" size="icon" aria-label="Add entry" disabled={busy || !draft.trim()}>
-          <Plus />
-        </Button>
+        <div className="flex items-start gap-2">
+          <select className={cn(selectClass, choice === NEW_TOPIC ? "w-36 shrink-0" : "w-full sm:w-56")} aria-label="Add to" value={choice} disabled={busy} onChange={(e) => setPick(e.target.value)}>
+            <option value={CORE}>Core</option>
+            {memory.topics.map((t) => (
+              <option key={t.topic} value={t.topic}>
+                {t.title ?? t.topic}
+              </option>
+            ))}
+            <option value={NEW_TOPIC}>New topic…</option>
+          </select>
+          {choice === NEW_TOPIC ? <TopicNameInput value={newName} onChange={setNewName} disabled={busy} /> : null}
+        </div>
+        <div className="flex gap-2">
+          <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add an entry…" disabled={busy} />
+          <Button type="submit" variant="outline" size="icon" aria-label="Add entry" disabled={busy || !draft.trim() || !targetOk || (choice === NEW_TOPIC && !newName)}>
+            <Plus />
+          </Button>
+        </div>
       </form>
     </section>
+  )
+}
+
+/** Search results in place of the listing: where each entry lives, its date, its text. */
+function SearchResults({ hits, error }: { hits: MemoryHit[] | null; error: string | null }): ReactNode {
+  if (error) return <p className="text-destructive text-sm" role="alert">{error}</p>
+  if (!hits) return <p className="text-muted-foreground text-sm">Searching…</p>
+  if (!hits.length) return <p className="text-muted-foreground text-sm">Nothing found.</p>
+  return (
+    <ul className="grid gap-1">
+      {hits.map((h) => (
+        <li key={`${h.file}|${h.date ?? ""}|${h.text}`} className="bg-muted/40 grid gap-1 rounded-lg px-3 py-2 text-sm">
+          <span className="text-muted-foreground flex flex-wrap items-baseline gap-x-2 text-xs">
+            <span className="min-w-0 truncate font-mono">{h.file}</span>
+            {h.date ? <span className="shrink-0">{h.date}</span> : null}
+            <span className="shrink-0">{scopeLabel(h.scope)}</span>
+          </span>
+          <span className="break-words">{h.text}</span>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -325,6 +489,32 @@ export function MemoryPanel(): ReactNode {
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const onError = useCallback((e: unknown) => setError((e as Error).message), [])
+  const [query, setQuery] = useState("")
+  const [hits, setHits] = useState<MemoryHit[] | null>(null)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const searching = query.trim().length >= 2
+  // debounced search across every scope; a late answer for an old query is dropped
+  useEffect(() => {
+    const q = query.trim()
+    setHits(null)
+    setSearchError(null)
+    if (q.length < 2) return
+    let stale = false
+    const timer = setTimeout(() => {
+      memoryApi.search(q).then(
+        (r) => {
+          if (!stale) setHits(r.hits)
+        },
+        (e: unknown) => {
+          if (!stale) setSearchError((e as Error).message)
+        },
+      )
+    }, 300)
+    return () => {
+      stale = true
+      clearTimeout(timer)
+    }
+  }, [query])
   const load = useCallback(() => {
     setError(null)
     memoryApi.get().then(setData, onError)
@@ -369,13 +559,23 @@ export function MemoryPanel(): ReactNode {
             <p className="text-muted-foreground text-sm">Loading…</p>
           ) : tab === "memory" ? (
             <div className="grid gap-5">
-              <MemorySection title="About you and everything" file={data.global.file} scope="global" text={data.global.text} onChange={load} onError={onError} />
-              {data.apps.map((a) => (
-                <MemorySection key={a.id} title={`Project: ${a.id}`} file={a.file} scope={a.scope ?? `app:${a.id}`} text={a.text} onChange={load} onError={onError} />
-              ))}
-              <p className="text-muted-foreground text-xs">
-                A project appears here once it has memory. Ask the agent to remember something about an app, or it will offer to at the end of a task.
-              </p>
+              <div className="relative">
+                <MagnifyingGlass size={16} className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 -translate-y-1/2" />
+                <Input className="pl-9" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search memory…" aria-label="Search memory" />
+              </div>
+              {searching ? (
+                <SearchResults hits={hits} error={searchError} />
+              ) : (
+                <>
+                  <MemorySection title="About you and everything" scope="global" memory={data.global} onChange={load} onError={onError} />
+                  {data.apps.map((a) => (
+                    <MemorySection key={a.id} title={`Project: ${a.id}`} scope={a.scope ?? `app:${a.id}`} memory={a} onChange={load} onError={onError} />
+                  ))}
+                  <p className="text-muted-foreground text-xs">
+                    A project appears here once it has memory. Ask the agent to remember something about an app, or it will offer to at the end of a task.
+                  </p>
+                </>
+              )}
             </div>
           ) : creating ? (
             <SkillForm

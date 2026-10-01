@@ -245,16 +245,44 @@ export interface AgentSkillDetail {
   files: string[]
 }
 
+/** One topic file beside a scope's core MEMORY.md. */
+export interface MemoryTopic {
+  topic: string
+  file: string
+  title?: string
+  text: string
+}
+
+export interface ScopeMemory {
+  file: string
+  text: string
+  topics: MemoryTopic[]
+}
+
+export interface MemoryHit {
+  scope: string
+  file: string
+  date?: string
+  text: string
+  score: number
+}
+
 export interface AgentMemory {
-  global: { file: string; text: string }
-  apps: Array<{ id: string; scope?: string; file: string; text: string }>
+  global: ScopeMemory
+  apps: Array<{ id: string; scope?: string } & ScopeMemory>
   skills: AgentSkill[]
 }
 
+/** topic null / omitted = the core file */
 export const memoryApi = {
   get: () => api<AgentMemory>("GET", "/v1/agent/memory"),
-  add: (scope: string, entry: string) => api<{ ok: boolean; line: string }>("POST", "/v1/agent/memory", { scope, entry }),
-  forget: (scope: string, line: string) => api<{ ok: boolean }>("POST", "/v1/agent/memory/forget", { scope, line }),
+  add: (scope: string, entry: string, topic?: string | null) =>
+    api<{ ok: boolean; line: string; file: string }>("POST", "/v1/agent/memory", { scope, entry, topic: topic ?? null }),
+  forget: (scope: string, line: string, topic?: string | null) =>
+    api<{ ok: boolean }>("POST", "/v1/agent/memory/forget", { scope, line, topic: topic ?? null }),
+  move: (scope: string, line: string, from: string | null, to: string | null) =>
+    api<{ ok: boolean; file: string }>("POST", "/v1/agent/memory/move", { scope, line, from, to }),
+  search: (q: string) => api<{ hits: MemoryHit[] }>("GET", `/v1/agent/memory/search?q=${encodeURIComponent(q)}`),
   skill: (scope: string, name: string) =>
     api<AgentSkillDetail>("GET", `/v1/agent/skills/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`),
   /** an extra file of a skill, e.g. references/table.md */

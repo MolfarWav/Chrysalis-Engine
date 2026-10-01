@@ -39,3 +39,4 @@
 - Upstream PR: only after testing on real models. Keep this `.fork/` folder out of it.
 - The user tests on free OpenRouter models.
 - The user will ask for an export of this state for their local app.
+- Next task, handed off (2026-10-01): eight items (move chats between projects, scalable memory, the two workspace debts, default instructions + protected paths, checkpoints, better ask_user, prompt inspector, finishing projects). Spec, verified code refs and open questions: `.fork/handoff/next/HANDOFF.md`.

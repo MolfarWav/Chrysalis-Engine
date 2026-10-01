@@ -3,7 +3,7 @@
  * the slash split once cut "Foo (01/2025)" down to "2025)".
  */
 import { describe, expect, it } from "bun:test";
-import { shortModelName } from "../client-agent/src/lib/utils.js";
+import { shortModelName } from "../client-agent/src/lib/model-name.js";
 
 describe("shortModelName", () => {
   it("keeps a slash inside brackets", () => {

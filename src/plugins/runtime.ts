@@ -70,6 +70,8 @@ export interface LoadedPlugin {
   fsRoot?: string | null;
   /** The app a bundled plugin belongs to (absent for top-level). */
   appId?: string;
+  /** Set when a sibling's manifest `replaces` this plugin: listed, never run. */
+  replacedBy?: string;
 }
 
 export interface LlmRequestHook {
@@ -141,6 +143,14 @@ export function discoverPlugins(pluginsDir: string): LoadedPlugin[] {
       plugins.push({ id, dir, manifest, source, mtimeMs: fs.statSync(path.join(dir, "plugin.js")).mtimeMs });
     } catch {
       log.warn(`plugin "${id}" skipped: invalid manifest or missing plugin.js`);
+    }
+  }
+  // a renamed plugin and the old copy left beside it would both run: the new
+  // one names the old in `replaces`, and only the new one runs
+  for (const pl of plugins) {
+    const replaces = Array.isArray(pl.manifest.replaces) ? pl.manifest.replaces : [];
+    for (const old of plugins) {
+      if (old !== pl && !old.replacedBy && replaces.includes(old.id)) old.replacedBy = pl.id;
     }
   }
   discoveryCache.set(pluginsDir, { plugins, key });
@@ -823,6 +833,9 @@ export interface PluginManifest {
    *  "*.example.com" suffixes. Absent/empty = no network at all; egress is
    *  default-deny for every plugin, trusted or imported. */
   networkHosts?: string[];
+  /** Ids of sibling plugins (same plugins/ folder) this one takes over from,
+   *  e.g. after a rename. A replaced sibling stays on disk but never runs. */
+  replaces?: string[];
 }
 
 // ---------- hook execution (two-phase llm exchange, worker-isolated) ----------

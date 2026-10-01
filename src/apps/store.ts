@@ -16,11 +16,57 @@
 import fs from "node:fs";
 import path from "node:path";
 import { isValidGitRef, isValidGitUrl } from "./git.js";
-import { readApp } from "./manager.js";
+import { listApps, readApp } from "./manager.js";
 import { readBaseline, readInstallSource, writeInstallSource } from "./update.js";
 
-/** Repository owners whose apps are official: the Chrysalis maintainers. */
-export const OFFICIAL_SOURCES: readonly string[] = ["https://github.com/ProjectChrysalis/"];
+/** Repository owners whose apps are official: the Chrysalis maintainers and
+ *  Molfar Vertep's own. */
+export const OFFICIAL_SOURCES: readonly string[] = ["https://github.com/ProjectChrysalis/", "https://github.com/MolfarWav/"];
+
+/** Apps Molfar Vertep maintains in its own fork: the upstream repository →
+ *  the fork. The Store installs the fork, and an install from the upstream
+ *  repository is moved to it, so no update comes from upstream again. */
+export const FORKED_APPS: Readonly<Record<string, string>> = {
+  "https://github.com/ProjectChrysalis/Roleplay-Chrysalis": "https://github.com/MolfarWav/Molfar.Vertep-Roleplay",
+};
+
+/** The fork that replaces a repository, or null when it has none. */
+export function forkOf(gitUrl: string): string | null {
+  const url = normalizeGitUrl(gitUrl);
+  for (const [upstream, fork] of Object.entries(FORKED_APPS)) {
+    if (normalizeGitUrl(upstream) === url) return fork;
+  }
+  return null;
+}
+
+/** Point installs of a forked app at the fork: the recorded install source,
+ *  the manifest's source and its bundled plugins' sources (which would
+ *  otherwise list as updating from upstream on their own). Code and data stay
+ *  as they are; the next update merges the fork in. Returns the ids moved. */
+export function adoptForkedApps(p: { apps: string; appUpstream: string }): { id: string; repository: string }[] {
+  const moved: { id: string; repository: string }[] = [];
+  const restamp = (file: string, from: string, to: string): void => {
+    try {
+      const raw = JSON.parse(fs.readFileSync(file, "utf8")) as { source?: { git?: unknown } };
+      if (typeof raw.source?.git !== "string" || normalizeGitUrl(raw.source.git) !== normalizeGitUrl(from)) return;
+      raw.source = { ...raw.source, git: to };
+      fs.writeFileSync(file, JSON.stringify(raw, null, 2) + "\n", "utf8");
+    } catch { /* not a manifest */ }
+  };
+  for (const info of listApps(p.apps)) {
+    const recorded = readInstallSource(p.appUpstream, info.id);
+    const from = recorded?.git ?? info.manifest.source?.git;
+    const fork = from ? forkOf(from) : null;
+    if (!from || !fork) continue;
+    writeInstallSource(p.appUpstream, info.id, { ...(recorded ?? { ref: info.manifest.source?.ref ?? "HEAD" }), git: fork });
+    restamp(path.join(info.dir, "manifest.json"), from, fork);
+    let plugins: string[] = [];
+    try { plugins = fs.readdirSync(path.join(info.dir, "plugins")); } catch { /* no plugins */ }
+    for (const pid of plugins) restamp(path.join(info.dir, "plugins", pid, "manifest.json"), from, fork);
+    moved.push({ id: info.id, repository: fork });
+  }
+  return moved;
+}
 
 /** Apps earlier engines shipped inside the download, by id, with the
  *  repository each one lives in now. An install the engine seeded from its

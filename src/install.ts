@@ -48,6 +48,13 @@ const sourcePackage = ((): { version?: unknown; repository?: unknown } => {
 
 export const ENGINE_VERSION: string = built?.version ?? (typeof sourcePackage.version === "string" ? sourcePackage.version : "dev");
 
+/** The upstream Chrysalis version whose app contract this engine keeps. Apps
+ *  state the engine they need in upstream's numbers (`"engine": ">=1.0.0"`),
+ *  while Molfar Vertep counts its own versions from 0.1.0, so an app's range
+ *  is checked against this and never against ENGINE_VERSION. Raise it when an
+ *  upstream merge brings a newer app contract. */
+export const APP_API_VERSION = "1.0.2";
+
 /** The engine's source repository (https URL), for the launcher footer and
  *  update checks. */
 export const ENGINE_REPOSITORY: string | null = built ? built.repository : typeof sourcePackage.repository === "string" ? sourcePackage.repository : null;

@@ -12,14 +12,14 @@ import { discoverPlugins, discoverAppPlugins, runPluginHook, runPluginHookOutcom
 import { McpRegistry, WEB_SEARCH_PRESET, readStdioApprovals, stdioFingerprint, writeStdioApproval, type CredentialMap, type McpServerConfig } from "../mcp/registry.js";
 import { listApps, readApp, createAppSkeleton, renameAppDir, appTree, validateAppManifest, hashAppTree, type AppInfo } from "../apps/manager.js";
 import { UPDATE_STRATEGIES, applyWrites, mergeBrief, restoreWrites, forgetInstall, mergeTrees, moveInstall, readBaseline, readCodeTree, readInstallSource, readPendingUpgrade, recoverBaseline, satisfiesRange, seedDataTemplates, writeBaseline, writeInstallSource, writePendingUpgrade, type InstallSource } from "../apps/update.js";
-import { OFFICIAL_SOURCES, createCatalog, isOfficialSource, normalizeGitUrl } from "../apps/store.js";
+import { OFFICIAL_SOURCES, createCatalog, forkOf, isOfficialSource, normalizeGitUrl } from "../apps/store.js";
 import { gitClone, gitRemoteHead, isValidGitRef, isValidGitUrl, remoteManifest, stripVcs } from "../apps/git.js";
 import { BACKUP_MAX_BYTES, BACKUP_META_DIR, BackupError, buildBackup, extractBackup, locateBackup, type BackupMeta } from "../apps/backup.js";
 import { bootstrapUserDir } from "../paths.js";
 import type { UserService, UserRecord } from "../users.js";
 import type { SessionService } from "../sessions.js";
 import type { InstanceConfig } from "../config.js";
-import { ENGINE_REPOSITORY, ENGINE_VERSION, resourcesDir } from "../install.js";
+import { APP_API_VERSION, ENGINE_REPOSITORY, ENGINE_VERSION, resourcesDir } from "../install.js";
 import type { ServerSettings } from "./settings.js";
 import { latestRelease } from "../updates.js";
 import { SELF_UPDATE, startUpdate, updateState } from "../self-update.js";
@@ -485,7 +485,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     const p = userPaths(dataDir, username);
     const disabled = disabledAppPlugins(p.settings);
     const bundled = listApps(p.apps).flatMap((a) => discoverAppPlugins(p.apps, a.id));
-    return [...discoverPlugins(p.plugins), ...bundled].filter((pl) => !disabled.has(pl.id));
+    return [...discoverPlugins(p.plugins), ...bundled].filter((pl) => !disabled.has(pl.id) && !pl.replacedBy);
   };
   /** How often a signed-in request re-checks timers, so a plugin the agent
    *  writes, an app install or a changed interval starts ticking without a
@@ -562,7 +562,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
    *  tools, agent tools, panels, image-host allowlists, schedules). */
   const enabledAppPlugins = (appsDir: string, appId: string, settingsPath: string) => {
     const disabled = disabledAppPlugins(settingsPath);
-    return discoverAppPlugins(appsDir, appId).filter((pl) => !disabled.has(pl.id));
+    return discoverAppPlugins(appsDir, appId).filter((pl) => !disabled.has(pl.id) && !pl.replacedBy);
   };
 
   const agentInstances = new Map<string, UserAgent>();
@@ -1653,6 +1653,8 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
       if (source) installed.set(normalizeGitUrl(source.git), a.id);
     }
     const apps = result.apps
+      // a forked app installs from the fork
+      .map((e) => ({ ...e, repository: forkOf(e.repository) ?? e.repository }))
       .map((e) => ({ ...e, official: isOfficialSource(e.repository, officialSources), installed: installed.get(normalizeGitUrl(e.repository)) ?? null }))
       .sort((a, b) => Number(b.official) - Number(a.official) || b.added.localeCompare(a.added) || a.name.localeCompare(b.name));
     return c.json({ enabled: true, apps, fetchedAt: result.fetchedAt, ...(result.error ? { error: result.error } : {}) });
@@ -3228,7 +3230,8 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
       pendingCapabilities: (pl.manifest.permissions ?? []).filter(
         (cap) => cap !== "hooks" && !granted(pl.id).includes(cap),
       ),
-      disabled: disabledAppPlugins(p.settings).has(pl.id),
+      disabled: disabledAppPlugins(p.settings).has(pl.id) || !!pl.replacedBy,
+      ...(pl.replacedBy ? { replacedBy: pl.replacedBy } : {}),
     });
     const items = discoverPlugins(p.plugins).map(mapper("user"));
     if (activeApp) {
@@ -3980,8 +3983,8 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
         modified,
         available: incoming?.version ?? null,
         engine: incoming?.engine ?? null,
-        engineOk: incoming?.engine ? satisfiesRange(incoming.engine, ENGINE_VERSION) : true,
-        engineVersion: ENGINE_VERSION,
+        engineOk: incoming?.engine ? satisfiesRange(incoming.engine, APP_API_VERSION) : true,
+        engineVersion: APP_API_VERSION,
       });
     } catch (e) {
       return c.json({ supported: true, repository: source.git, error: (e as Error).message }, 200);
@@ -4082,9 +4085,9 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     }
     const from = info.manifest.version;
     const to = incomingManifest.version;
-    if (incomingManifest.engine && !satisfiesRange(incomingManifest.engine, ENGINE_INFO.version)) {
+    if (incomingManifest.engine && !satisfiesRange(incomingManifest.engine, APP_API_VERSION)) {
       dropStaging();
-      return c.json({ error: `v${to} needs Chrysalis engine ${incomingManifest.engine}, and this engine is v${ENGINE_INFO.version}. Update the engine first.` }, 409);
+      return c.json({ error: `v${to} needs Chrysalis engine ${incomingManifest.engine}, and this engine keeps the app contract of Chrysalis v${APP_API_VERSION}. Update the engine first.` }, 409);
     }
 
     // What a third-party update would newly be able to do is reviewed before
@@ -4276,7 +4279,8 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
         description: pl.manifest.description ?? null,
         permissions: pl.manifest.permissions ?? [],
         networkHosts: pl.manifest.networkHosts ?? [],
-        disabled: disabled.has(pl.id),
+        disabled: disabled.has(pl.id) || !!pl.replacedBy,
+        ...(pl.replacedBy ? { replacedBy: pl.replacedBy } : {}),
         repository,
       };
     });
@@ -4967,7 +4971,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#111217}iframe{border:
       if (!fs.existsSync(path.join(p.apps, appId, "plugins", dir, "plugin.js"))) continue;
       const pl = loaded.get(pid);
       if (!pl) reasons.push(`plugin ${dir} did not load: its manifest.json is missing or not valid JSON`);
-      else if (disabled.has(pid)) continue;
+      else if (disabled.has(pid) || pl.replacedBy) continue;
       else if (pl.manifest.permissions.some((x) => x === "routes" || x === "register:routes") && !pluginGranted(pl, pl.manifest.permissions.includes("routes") ? "routes" : "register:routes", grants)) {
         reasons.push(`plugin ${dir} is waiting for its routes permission to be approved`);
       }
@@ -5158,7 +5162,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:#111217}iframe{border:
     for (const account of users.list()) {
       for (const info of listApps(userPaths(dataDir, account.username).apps)) {
         const needs = info.manifest.engine;
-        if (!needs || satisfiesRange(needs, release.version)) continue;
+        // a release keeps the app contract this engine has (APP_API_VERSION)
+        // unless it raises it, which a new engine says only once installed
+        if (!needs || satisfiesRange(needs, APP_API_VERSION)) continue;
         if (!incompatibleApps.some((a) => a.name === info.manifest.name && a.needs === needs)) incompatibleApps.push({ name: info.manifest.name, needs });
       }
     }

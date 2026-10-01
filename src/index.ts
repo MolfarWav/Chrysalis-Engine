@@ -23,7 +23,7 @@ import { bootstrapUserDir, ensureGitignoreEntries, ensureNotesDir, ensureWorkspa
 import { initRepo, untrackBoundary, commitAll as gitCommitAll, commitPaths as gitCommitPaths } from "./git.js";
 import { renameAppDir } from "./apps/manager.js";
 import { gcRepoIfChunky } from "./apps/git.js";
-import { adoptFormerlyShipped } from "./apps/store.js";
+import { adoptForkedApps, adoptFormerlyShipped } from "./apps/store.js";
 import { buildApp } from "./server/app.js";
 import { EventBus } from "./server/ws.js";
 import { engineUrls, Listener, selfUrl } from "./server/listen.js";
@@ -551,6 +551,11 @@ async function prepareAccounts(users: UserService, dataDir: string): Promise<voi
     }
     // apps an earlier engine shipped now live in their own repositories
     for (const { id, repository } of adoptFormerlyShipped(p)) {
+      await gitCommitAll(p.root, u.username, `app(${id}): updates now come from ${repository}`);
+      log.info(`${u.username}/${id} now updates from ${repository}`);
+    }
+    // apps Molfar Vertep forked update from the fork, never from upstream
+    for (const { id, repository } of adoptForkedApps(p)) {
       await gitCommitAll(p.root, u.username, `app(${id}): updates now come from ${repository}`);
       log.info(`${u.username}/${id} now updates from ${repository}`);
     }

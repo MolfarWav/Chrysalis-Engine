@@ -47,6 +47,14 @@ describe("plugin discovery", () => {
     const ids = discoverPlugins(path.join(dir, "plugins")).map((p) => p.id);
     expect(ids).toEqual(["good"]);
   });
+
+  it("a plugin that replaces a sibling marks it, and only it", () => {
+    writePlugin("archivarius", { name: "Archivarius", version: "1.0.0", permissions: ["hooks"] }, "export {}");
+    writePlugin("litopys", { name: "Litopys", version: "1.1.0", permissions: ["hooks"], replaces: ["archivarius", "gone", "litopys"] }, "export {}");
+    writePlugin("other", { name: "Other", version: "1.0.0", permissions: ["hooks"], replaces: "archivarius" }, "export {}");
+    const byId = new Map(discoverPlugins(path.join(dir, "plugins")).map((p) => [p.id, p.replacedBy]));
+    expect(Object.fromEntries(byId)).toEqual({ archivarius: "litopys", litopys: undefined, other: undefined });
+  });
 });
 
 describe("plugin sandbox execution", () => {

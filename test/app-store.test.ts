@@ -19,7 +19,7 @@ import { UserService } from "../src/users.js";
 import { defaultInstanceConfig } from "../src/config.js";
 import { bootstrapUserDir, userPaths } from "../src/paths.js";
 import { invalidatePluginCache } from "../src/plugins/runtime.js";
-import { adoptFormerlyShipped, createCatalog, isOfficialSource, parseCatalog } from "../src/apps/store.js";
+import { adoptForkedApps, adoptFormerlyShipped, createCatalog, forkOf, isOfficialSource, parseCatalog } from "../src/apps/store.js";
 import { readInstallSource, readCodeTree, writeBaseline, writeInstallSource } from "../src/apps/update.js";
 
 const entry = (over: Record<string, unknown> = {}) => ({
@@ -58,6 +58,7 @@ describe("store list", () => {
   it("official means a repository directly under a maintainers' owner", () => {
     expect(isOfficialSource("https://github.com/ProjectChrysalis/Roleplay-Chrysalis")).toBe(true);
     expect(isOfficialSource("https://GitHub.com/projectchrysalis/roleplay.git/")).toBe(true);
+    expect(isOfficialSource("https://github.com/MolfarWav/Molfar.Vertep-Roleplay")).toBe(true);
     for (const url of [
       "https://github.com/ProjectChrysalisX/app",
       "https://github.com/someone/ProjectChrysalis",
@@ -186,16 +187,18 @@ describe("installing from the store", () => {
     const storeFetch = (async () => new Response(JSON.stringify({ apps: storeApps }))) as unknown as typeof fetch;
     const store = buildApp({ users, sessions: new SessionService(dataDir), config: defaultInstanceConfig(), dataDir, bus: new EventBus(), storeFetch });
     const list = async () =>
-      (await (await store.request("/v1/store?fresh=1", { headers: { authorization: `Bearer ${token}` } })).json()) as { enabled: boolean; apps: { id: string; official: boolean; installed: string | null }[] };
+      (await (await store.request("/v1/store?fresh=1", { headers: { authorization: `Bearer ${token}` } })).json()) as { enabled: boolean; apps: { id: string; repository: string; official: boolean; installed: string | null }[] };
 
     const before = await list();
     expect(before.enabled).toBe(true);
     expect(before.apps.map((a) => [a.id, a.official, a.installed])).toEqual([["roleplay", true, null], ["community", false, null]]);
+    // Roleplay is forked: the Store installs the fork, never upstream
+    expect(before.apps.map((a) => a.repository)).toEqual(["https://github.com/MolfarWav/Molfar.Vertep-Roleplay", "https://github.com/someone/community"]);
 
     const p = userPaths(dataDir, "alice");
     fs.mkdirSync(path.join(p.apps, "my-roleplay"), { recursive: true });
     fs.writeFileSync(path.join(p.apps, "my-roleplay", "manifest.json"), JSON.stringify({ name: "Roleplay", version: "1", kind: "app" }));
-    writeInstallSource(p.appUpstream, "my-roleplay", { git: "https://github.com/projectchrysalis/roleplay-chrysalis.git", ref: "HEAD" });
+    writeInstallSource(p.appUpstream, "my-roleplay", { git: "https://github.com/molfarwav/molfar.vertep-roleplay.git", ref: "HEAD" });
     expect((await list()).apps.find((a) => a.id === "roleplay")?.installed).toBe("my-roleplay");
 
     const config = defaultInstanceConfig();
@@ -499,6 +502,70 @@ describe("installing from the store", () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(p.apps, "roleplay", "manifest.json"), "utf8")) as Record<string, unknown>;
     expect(manifest.official).toBeUndefined();
     expect(manifest.source).toEqual({ git: "https://github.com/ProjectChrysalis/Roleplay-Chrysalis", ref: "HEAD" });
+  });
+
+  it("an app's engine range is read in upstream's numbers, not the fork's own version", async () => {
+    const url = await publish("ranged", { name: "Ranged", version: "1.0.0", kind: "app", engine: ">=1.0.0" });
+    const id = await importApp(url);
+    const bump = (version: string, engine: string) => (work: string) =>
+      fs.writeFileSync(path.join(work, "manifest.json"), JSON.stringify({ name: "Ranged", version, kind: "app", engine }));
+    await republish("ranged", bump("1.1.0", ">=1.0.0"));
+    const check = (await (await call(`/v1/apps/${id}/updates?fresh=1`)).json()) as { engineOk: boolean };
+    expect(check.engineOk).toBe(true);
+    expect(((await (await call(`/v1/apps/${id}/update`, { method: "POST", body: "{}" })).json()) as { status: string }).status).toBe("applied");
+    await republish("ranged", bump("1.2.0", ">=9.0.0"));
+    expect((await call(`/v1/apps/${id}/update`, { method: "POST", body: "{}" })).status).toBe(409);
+  }, 60_000);
+
+  it("moves installs of a forked app to the fork, with its plugins, and nothing else", () => {
+    const p = userPaths(dataDir, "alice");
+    const upstream = "https://github.com/ProjectChrysalis/Roleplay-Chrysalis";
+    const fork = "https://github.com/MolfarWav/Molfar.Vertep-Roleplay";
+    expect(forkOf("https://github.com/projectchrysalis/roleplay-chrysalis.git/")).toBe(fork);
+    expect(forkOf("https://github.com/someone/community")).toBeNull();
+    const make = (id: string, git: string, recorded: boolean) => {
+      const dir = path.join(p.apps, id);
+      fs.mkdirSync(path.join(dir, "plugins", "engine"), { recursive: true });
+      fs.mkdirSync(path.join(dir, "plugins", "mine"), { recursive: true });
+      fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ name: id, version: "4.18.2", kind: "app", origin: "imported", source: { git, ref: "HEAD", head: "abc" } }));
+      fs.writeFileSync(path.join(dir, "plugins", "engine", "manifest.json"), JSON.stringify({ name: "Engine", permissions: [], source: { git, head: "abc" } }));
+      fs.writeFileSync(path.join(dir, "plugins", "mine", "manifest.json"), JSON.stringify({ name: "Mine", permissions: [], source: { git: "https://github.com/someone/mine" } }));
+      if (recorded) writeInstallSource(p.appUpstream, id, { git, ref: "main" });
+    };
+    make("roleplay", upstream, true);
+    make("rp-old", upstream, false);
+    make("community", "https://github.com/someone/community", true);
+    expect(adoptForkedApps(p)).toEqual([{ id: "roleplay", repository: fork }, { id: "rp-old", repository: fork }].sort((a, b) => a.id.localeCompare(b.id)));
+    expect(adoptForkedApps(p)).toEqual([]);
+    expect(readInstallSource(p.appUpstream, "roleplay")).toEqual({ git: fork, ref: "main" });
+    expect(readInstallSource(p.appUpstream, "rp-old")).toEqual({ git: fork, ref: "HEAD" });
+    expect(readInstallSource(p.appUpstream, "community")?.git).toBe("https://github.com/someone/community");
+    const read = (...rel: string[]) => JSON.parse(fs.readFileSync(path.join(p.apps, ...rel), "utf8")) as { source: { git: string; ref?: string; head?: string } };
+    expect(read("roleplay", "manifest.json").source).toEqual({ git: fork, ref: "HEAD", head: "abc" });
+    expect(read("roleplay", "plugins", "engine", "manifest.json").source.git).toBe(fork);
+    expect(read("roleplay", "plugins", "mine", "manifest.json").source.git).toBe("https://github.com/someone/mine");
+    expect(read("community", "manifest.json").source.git).toBe("https://github.com/someone/community");
+  });
+
+  it("a plugin that replaces a sibling runs alone, and the old one is listed as off", async () => {
+    const p = userPaths(dataDir, "alice");
+    const dir = path.join(p.apps, "studio");
+    const plugin = (id: string, manifest: Record<string, unknown>, who: string) => {
+      fs.mkdirSync(path.join(dir, "plugins", id), { recursive: true });
+      fs.writeFileSync(path.join(dir, "plugins", id, "manifest.json"), JSON.stringify({ version: "1.0.0", origin: "local", permissions: ["routes"], ...manifest }));
+      fs.writeFileSync(path.join(dir, "plugins", id, "plugin.js"), `export function handleRoute(req) { return req.path === "/${who}" ? { status: 200, json: { who: "${who}" } } : null; }`);
+    };
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ name: "Studio", version: "1.0.0", kind: "app" }));
+    plugin("archivarius", { name: "Archivarius" }, "old");
+    invalidatePluginCache();
+    expect((await call("/v1/apps/studio/old")).status).toBe(200);
+    plugin("litopys", { name: "Litopys", replaces: ["archivarius"] }, "new");
+    invalidatePluginCache();
+    expect((await (await call("/v1/apps/studio/new")).json()) as unknown).toEqual({ who: "new" });
+    expect((await call("/v1/apps/studio/old")).status).toBe(404);
+    const listed = ((await (await call("/v1/apps/studio/plugins")).json()) as { plugins: { id: string; disabled: boolean; replacedBy?: string }[] }).plugins;
+    expect(listed.map((x) => [x.id, x.disabled, x.replacedBy ?? null])).toEqual([["archivarius", true, "litopys"], ["litopys", false, null]]);
   });
 
   it("remembers the day the Store was last looked at", async () => {

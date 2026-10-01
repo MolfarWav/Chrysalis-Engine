@@ -13,7 +13,7 @@ function slowTransport() {
     stats.max = Math.max(stats.max, stats.inflight);
     await new Promise((r) => setTimeout(r, 5));
     stats.inflight--;
-    return ops.map((op) => ({ ok: true as const, text: `// ${op.path ?? ""}` }));
+    return ops.map((op) => ({ ok: true as const, text: `// ${"path" in op ? op.path : ""}` }));
   };
   return { stats, transport };
 }

@@ -21,6 +21,7 @@ import { log } from "../logger.js";
 import { clampThinkingLevel, isContextOverflow, type AssistantMessage } from "@earendil-works/pi-ai";
 import { clampMaxTokens, fitContext, newTrimState } from "./context-budget.js";
 import { appTouched, buildMemoryTools, memoryPromptSection, projectContextFor } from "./memory.js";
+import { buildCheckpointTool, changedSince, createCheckpoint, type Checkpoint } from "./checkpoints.js";
 import { readSandboxSettings } from "../sandbox/network.js";
 import { projectLayout, projectPromptSection, readSettings } from "./projects.js";
 
@@ -33,6 +34,24 @@ export interface AgentRunTurn {
   /** Text the model produced in this turn (mid-turn commentary or the final answer). */
   text?: string;
   tools: { name: string; ok: boolean; summary: string; output?: string; diff?: string; args?: Record<string, unknown> }[];
+}
+
+/** Tools whose first touch of an app in a run takes an automatic checkpoint. */
+const AUTO_CHECKPOINT_TOOLS = new Set(["write_file", "edit_file", "bash", "app_deps"]);
+
+interface RunState {
+  /** The run's request, shortened: the automatic checkpoint's label. */
+  label: string;
+  checkpoints: Map<string, Checkpoint>;
+}
+
+/** An app the run changed, and the checkpoint taken before it did. */
+export interface RunCheckpoint {
+  id: string;
+  app: string;
+  label: string;
+  /** Code files changed since the checkpoint. */
+  changed: number;
 }
 
 export interface AgentRunResult {
@@ -50,6 +69,8 @@ export interface AgentRunResult {
   usage?: { input: number; output: number; cacheRead: number };
   /** Every model call of the run, summed and priced. */
   spend?: RunSpend;
+  /** Apps this run changed, each with the checkpoint to undo it. */
+  checkpoints?: RunCheckpoint[];
   /** Context window of the resolved model (auto-compact thresholding). */
   contextWindow?: number;
   /** Set when the run was aborted mid-flight (partial output is persisted). */
@@ -97,6 +118,8 @@ interface SessionRunRecord {
   usage?: { input: number; output: number; cacheRead: number };
   /** Every model call the run made, summed (usage above is only the last). */
   spend?: RunSpend;
+  /** Apps this run changed, each with the checkpoint to undo it. */
+  checkpoints?: RunCheckpoint[];
 }
 
 /** Tokens a whole run used across its model calls, and what they cost in
@@ -327,6 +350,9 @@ export class UserAgent {
     private svc: Pick<UserModelService, "costOf">,
     /** The project this session belongs to (null: a plain chat). */
     readonly project: string | null = null,
+    /** Checkpoints the current run took (reset at each run). */
+    private runState: RunState = { label: "", checkpoints: new Map() },
+    private root = "",
   ) {}
 
   /** Async factory: model resolution requires provider auth state. */
@@ -369,6 +395,7 @@ export class UserAgent {
       }
     }
     const projectSettings = project ? readSettings(paths.root, projectLayout(paths.root, project)) : null;
+    const runState: RunState = { label: "", checkpoints: new Map() };
 
     let tools: AgentTool[] = [
       ...buildUserTools(username, paths, {
@@ -382,6 +409,7 @@ export class UserAgent {
       }),
     ];
     tools.push(...buildMemoryTools(username, paths, { ...(opts.ask ? { ask: opts.ask } : {}) }));
+    tools.push(buildCheckpointTool(username, paths.root, opts.ask));
     if (isAdmin) {
       tools.push(...buildAdminTools(users, {
         ...(opts.settings ? { settings: opts.settings } : {}),
@@ -452,6 +480,20 @@ export class UserAgent {
         // pi-agent-core reads the level from state; undefined = "off"
         ...(level !== "off" ? { thinkingLevel: level } : {}),
       },
+      // the first change to an app in a run takes a checkpoint first, so a
+      // build that goes wrong has a known point to go back to
+      beforeToolCall: async (ctx) => {
+        try {
+          if (!AUTO_CHECKPOINT_TOOLS.has(ctx.toolCall.name)) return undefined;
+          const appId = appTouched(ctx.toolCall.name, ctx.args);
+          if (!appId || runState.checkpoints.has(appId)) return undefined;
+          if (!fs.existsSync(path.join(paths.root, "apps", appId, "manifest.json"))) return undefined;
+          runState.checkpoints.set(appId, await createCheckpoint(paths.root, username, appId, `before: ${runState.label}`, true));
+        } catch (e) {
+          log.warn(`[agent:${sessionId}] auto checkpoint failed: ${(e as Error).message}`);
+        }
+        return undefined;
+      },
       // a project's memory and skills ride on the first tool result that
       // touches that app, once per agent (see memory.ts)
       afterToolCall: async (ctx) => {
@@ -471,7 +513,7 @@ export class UserAgent {
         return svc.streamFn(m, c, maxTokens !== undefined ? { ...o, maxTokens } : o, sessionId);
       },
     });
-    return new UserAgent(agent, sessionId, sFile, budget, svc, project);
+    return new UserAgent(agent, sessionId, sFile, budget, svc, project, runState, paths.root);
   }
 
   /** The model this session runs on, for one-shot calls made on its behalf. */
@@ -506,6 +548,8 @@ export class UserAgent {
     } = {},
   ): Promise<AgentRunResult> {
     this.markStarted(userMessage);
+    this.runState.label = userMessage.replace(/\s+/g, " ").trim().slice(0, 60) || "a request";
+    this.runState.checkpoints.clear();
     // "@path" in the message means the person is pointing at a file. Reading
     // it here saves the model a round trip to find out what they meant, and
     // saves them wondering why it went looking instead of just looking.
@@ -676,7 +720,8 @@ export class UserAgent {
     // visible failures only need the reason; this makes an empty settle
     // (stop/length/aborted) diagnosable from the engine log
     if (!text) log.warn(`[agent:${this.sessionId}] run settled with no reply: stop=${stop ?? "none"} out=${(finalAssistant as { usage?: { output?: number } } | undefined)?.usage?.output ?? "?"}`);
-    this.persistRun(userMessage, text, toolTrace, usage, thinkingText, thinkingMs, turns, opts.imageUrls, spend);
+    const checkpoints = await this.runCheckpoints();
+    this.persistRun(userMessage, text, toolTrace, usage, thinkingText, thinkingMs, turns, opts.imageUrls, spend, checkpoints);
     const resolvedModel = (this.agent.state as { model?: { contextWindow?: number } }).model;
     return {
       finalText: text || emptyNote || "",
@@ -687,11 +732,26 @@ export class UserAgent {
       ...(thinkingMs !== undefined ? { thinkingMs } : {}),
       ...(usage ? { usage } : {}),
       ...(spend ? { spend } : {}),
+      ...(checkpoints.length ? { checkpoints } : {}),
       ...(resolvedModel?.contextWindow ? { contextWindow: resolvedModel.contextWindow } : {}),
       ...(stop === "aborted" ? { stopped: true } : {}),
       ...(error ? { error } : {}),
       ...(contextOverflow ? { contextOverflow: true } : {}),
     };
+  }
+
+  /** The run's automatic checkpoints whose app actually changed. */
+  private async runCheckpoints(): Promise<RunCheckpoint[]> {
+    const out: RunCheckpoint[] = [];
+    for (const cp of this.runState.checkpoints.values()) {
+      try {
+        const changed = await changedSince(this.root, cp);
+        if (changed.length) out.push({ id: cp.id, app: cp.app, label: cp.label, changed: changed.length });
+      } catch (e) {
+        log.warn(`[agent:${this.sessionId}] checkpoint check failed: ${(e as Error).message}`);
+      }
+    }
+    return out;
   }
 
   /** Open the session file so a new chat is listable while its first run is
@@ -735,6 +795,7 @@ export class UserAgent {
     turns: AgentRunTurn[],
     imageUrls?: string[],
     spend?: RunSpend,
+    checkpoints: RunCheckpoint[] = [],
   ): void {
     try {
       fs.mkdirSync(path.dirname(this.sFile), { recursive: true });
@@ -772,6 +833,7 @@ export class UserAgent {
         ...(thinkingMs !== undefined ? { thinkingMs } : {}),
         ...(usage ? { usage } : {}),
         ...(spend ? { spend } : {}),
+        ...(checkpoints.length ? { checkpoints } : {}),
       };
       fs.appendFileSync(this.sFile, JSON.stringify(rec) + "\n", "utf8");
     } catch (e) {
@@ -1216,6 +1278,7 @@ ${installedAppsSection(paths)}Before editing an app, read its own AGENTS.md and 
 - App data files (apps/<id>/data/) are plain JSON/JSONL you can read and edit directly — open clients sync within ~1s, no reload. Underscore-prefixed files there (_example.json) are AI-only templates: never shown in the UI, copy one to a real name to create the entity. Copy the template's field shape exactly.
 - Plugins and manifests hot-reload by mtime; nothing to call. Create apps with app_create.
 - After editing an app's src/ or package.json, run app_check before you call it done.
+- Checkpoints: before building a feature or a risky change in an app, call checkpoint { action: "create", app, label }. Commit bash changes first (the checkpoint does it too). The engine also takes one before your first change to an app in each request. When app_check keeps failing after your fixes, or the user says the app broke, offer to go back with ask_user, then checkpoint { action: "restore" }. A restore puts back code only; data/ stays.
 - Need a fresh build even though nothing changed (a stale page, a hot-update chain that went wrong, an untrusted status): app_rebuild forces one, like the pane's Rebuild button.
 - console.log/info/warn/debug from an open app page are captured: app_console reads them back like a test log (newest last). Print, let the page run, read. Nothing is captured while no page has the app open.
 - Big files are normal (a character card can pass 100 KB): grep for the field you need or read a line slice — never load a whole large JSON just to change one value.

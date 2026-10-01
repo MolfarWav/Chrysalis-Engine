@@ -288,3 +288,39 @@ export async function restoreFile(
     await commitWithReflog(dir, username, `restore: ${filepath} from ${oid.slice(0, 8)}`, false);
   });
 }
+
+/** The commit HEAD points at; null in a repo with no commits yet. */
+export async function headOid(dir: string): Promise<string | null> {
+  try {
+    return await git.resolveRef({ fs, dir, ref: "HEAD" });
+  } catch {
+    return null;
+  }
+}
+
+/** Every file under `prefix` in a commit, as path → blob oid. An absent
+ *  folder is an empty map. `skip` drops whole subtrees by their path. */
+export async function treeFiles(dir: string, commit: string, prefix: string, skip: (rel: string) => boolean = () => false): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const walk = async (rel: string): Promise<void> => {
+    let tree: Awaited<ReturnType<typeof git.readTree>>;
+    try {
+      tree = await git.readTree({ fs, dir, oid: commit, filepath: rel });
+    } catch {
+      return; // not in this commit
+    }
+    for (const e of tree.tree) {
+      const p = `${rel}/${e.path}`;
+      if (skip(p)) continue;
+      if (e.type === "tree") await walk(p);
+      else if (e.type === "blob") out.set(p, e.oid);
+    }
+  };
+  await walk(prefix.replace(/\/+$/, ""));
+  return out;
+}
+
+/** A blob's bytes by its oid. */
+export async function readBlobOid(dir: string, oid: string): Promise<Uint8Array> {
+  return (await git.readBlob({ fs, dir, oid })).blob;
+}

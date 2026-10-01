@@ -51,6 +51,7 @@ export const WRITE_TOOLS = new Set([
   "memory_propose",
   "skill_propose",
   "skill_edit",
+  "checkpoint",
 ]);
 
 const MAX_READ_BYTES = 256 * 1024;

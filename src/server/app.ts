@@ -33,6 +33,7 @@ import { curatedProviders, loadCustomProviders, reservedProviderIds } from "../p
 import { UserAgent, instructionDocsStamp, listSessions, renameSession, archiveSession, moveSession, sessionDir, sessionProject, isReasoningLevel, type ReasoningLevel } from "../agent/agent.js";
 import { normalizeAskOption } from "../agent/tools.js";
 import * as projects from "../agent/projects.js";
+import * as checkpoints from "../agent/checkpoints.js";
 import * as profileBackup from "../profile-backup.js";
 import { summarizeSession } from "../agent/compact.js";
 import * as agentMemory from "../agent/memory.js";
@@ -2775,6 +2776,47 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
       const l = projects.importProject(p.root, new Uint8Array(await c.req.arrayBuffer()), name);
       await git.commitAll(p.root, u.username, `project: import ${l.name}`).catch(() => undefined);
       return c.json({ ok: true, id: l.id });
+    } catch (e) {
+      return projectError(c, e);
+    }
+  });
+
+  // ---------- checkpoints: an app's code, back to a known point ----------
+  // App projects only; restore puts back code, never data/ (checkpoints.ts).
+  const appOfProject = (c: Context<AppEnv>): string => {
+    const l = projectOf(c);
+    if (l.kind !== "app") throw new projects.ProjectError("checkpoints exist for apps only");
+    return l.name;
+  };
+
+  app.get("/v1/projects/:pid/checkpoints", (c) => {
+    try {
+      const appId = appOfProject(c);
+      return c.json({ checkpoints: checkpoints.listCheckpoints(c.get("paths").root, appId) });
+    } catch (e) {
+      return projectError(c, e);
+    }
+  });
+
+  app.post("/v1/projects/:pid/checkpoints", async (c) => {
+    const body = await c.req.json<{ label?: unknown }>().catch(() => ({}) as { label?: unknown });
+    try {
+      const appId = appOfProject(c);
+      const cp = await checkpoints.createCheckpoint(c.get("paths").root, c.get("user").username, appId, typeof body.label === "string" ? body.label : "saved by hand");
+      return c.json({ checkpoint: cp });
+    } catch (e) {
+      return projectError(c, e);
+    }
+  });
+
+  app.post("/v1/projects/:pid/checkpoints/:id/restore", async (c) => {
+    try {
+      const appId = appOfProject(c);
+      const root = c.get("paths").root;
+      const cp = checkpoints.getCheckpoint(root, c.req.param("id"));
+      if (!cp || cp.app !== appId) return c.json({ error: "no such checkpoint for this app" }, 404);
+      const r = await checkpoints.restoreCheckpoint(root, c.get("user").username, cp.id);
+      return c.json(r);
     } catch (e) {
       return projectError(c, e);
     }

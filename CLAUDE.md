@@ -12,7 +12,8 @@ holds the rules that do not change between tasks; the handoff holds the task.
 - Clear task: do it. Real ambiguity: 2-8 questions first (AskUserQuestion, options with a short explanation, a recommended default).
 - Verify before claiming anything about code or state; say plainly what is a guess.
 - They test on free OpenRouter models: mostly text-only, small context windows.
-- They run from source on Windows, on two machines. The laptop's launcher (`.fork/Chrysalis.bat`) switches to the newest `claude/*` branch on its own, so pushing your branch is how they get it.
+- They run from source on Windows, on two machines, and switch between them: desktop `C:\Users\sulaz\Chrysalis-Engine` (launcher `.fork/start-chrysalis.bat`), laptop `D:\ROLEPlay\Chrysalis-Engine` (launcher `.fork/Chrysalis.bat`, which switches to the newest `claude/*` branch on its own, so pushing your branch is how they get it).
+- `data/` is gitignored: code syncs between the machines through GitHub, the workspaces (apps, chats, memory, keys) do not. The repo is public; workspace data never goes into it.
 
 ## Two workers, no overlap
 - Claude Code changes the engine: this repo.

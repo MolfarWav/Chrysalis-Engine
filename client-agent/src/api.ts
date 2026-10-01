@@ -51,6 +51,7 @@ export interface EngineRun {
   spend?: RunSpend
   title?: string
   summary?: string
+  checkpoints?: RunCheckpoint[]
 }
 
 /** What one run used across its model calls; cost in USD, null when the
@@ -74,6 +75,16 @@ export interface AgentResponse {
   autoCompacted?: boolean
   stopped?: boolean
   error?: string
+  checkpoints?: RunCheckpoint[]
+}
+
+/** An app a run changed, with the automatic checkpoint taken before the change. */
+export interface RunCheckpoint {
+  id: string
+  app: string
+  label: string
+  /** files changed in the app by the run */
+  changed: number
 }
 
 export interface EngineModel {
@@ -291,6 +302,26 @@ export interface ProjectDetail extends ProjectSummary {
   fileList: ProjectFile[]
 }
 
+/** A named point an app's code can go back to (apps only). */
+export interface Checkpoint {
+  id: string
+  app: string
+  label: string
+  oid: string
+  at: number
+  /** taken by the engine before a run's first change, not asked for */
+  auto: boolean
+}
+
+export interface RestoreResult {
+  checkpoint: Checkpoint
+  /** the state just before the restore: restoring it undoes the restore */
+  before: Checkpoint
+  changed: string[]
+  /** package.json differs: the app's dependencies need reinstalling */
+  depsChanged: boolean
+}
+
 export interface ProjectUpdate {
   instructions?: string
   title?: string
@@ -341,6 +372,9 @@ export const projectsApi = {
   deleteFile: (pid: string, name: string) => api<{ ok: boolean }>("DELETE", `${pidPath(pid)}/files/${encodeURIComponent(name)}`),
   fileUrl: (pid: string, name: string) => `${pidPath(pid)}/files/${encodeURIComponent(name)}`,
   exportUrl: (pid: string) => `${pidPath(pid)}/export`,
+  checkpoints: (pid: string) => api<{ checkpoints: Checkpoint[] }>("GET", `${pidPath(pid)}/checkpoints`).then((r) => r.checkpoints ?? []),
+  createCheckpoint: (pid: string, label: string) => api<{ checkpoint: Checkpoint }>("POST", `${pidPath(pid)}/checkpoints`, { label }).then((r) => r.checkpoint),
+  restoreCheckpoint: (pid: string, id: string) => api<RestoreResult>("POST", `${pidPath(pid)}/checkpoints/${encodeURIComponent(id)}/restore`),
 }
 
 export const PROJECT_FILE_MAX = 10 * 1024 * 1024

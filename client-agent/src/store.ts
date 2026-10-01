@@ -40,6 +40,8 @@ export interface PendingAsk {
 export interface Banner {
   kind: "error" | "info"
   text: string
+  /** one button beside Dismiss, e.g. "Undo" */
+  action?: { label: string; run: () => void }
 }
 
 /** A session's model spend: tokens over every run, and the price of the runs
@@ -124,6 +126,12 @@ export interface AgentState {
   reloadCurrent: () => Promise<void>
   editAt: (at: number, text: string) => Promise<void>
   newChat: (project?: string) => void
+  /** bumps after a checkpoint is restored, so open lists of them reload */
+  checkpointsRev: number
+  /** checkpoint ids whose run was undone, to mark the line under the message */
+  undone: Record<string, true>
+  /** put an app's code back to a checkpoint, then say so in the banner with an Undo */
+  restoreCheckpoint: (app: string, id: string, markUndone?: string) => Promise<boolean>
   /** bumps whenever a draft is put in the new chat's composer from outside it */
   draftSeed: number
   /** start a new chat with `text` already in its composer */
@@ -258,6 +266,8 @@ export const useAgent = create<AgentState>()((set, get) => {
     view: { kind: "chat" },
     draftProject: null,
     draftSeed: 0,
+    checkpointsRev: 0,
+    undone: {},
     mode: storedMode(),
     wsDown: false,
     usage: null,
@@ -363,6 +373,27 @@ export const useAgent = create<AgentState>()((set, get) => {
       await get().send(text)
     },
 
+    restoreCheckpoint: async (app, id, markUndone) => {
+      try {
+        const r = await projectsApi.restoreCheckpoint(`app:${app}`, id)
+        const files = r.changed.length === 1 ? "1 file" : `${r.changed.length} files`
+        const deps = r.depsChanged ? ". Reinstall dependencies: ask the agent to run app_deps" : ""
+        set((st) => ({
+          checkpointsRev: st.checkpointsRev + 1,
+          undone: markUndone ? { ...st.undone, [markUndone]: true } : st.undone,
+          banner: {
+            kind: "info",
+            text: `Restored ${files} of ${app} to "${r.checkpoint.label}"${deps}`,
+            action: { label: "Undo", run: () => void get().restoreCheckpoint(app, r.before.id) },
+          },
+        }))
+        return true
+      } catch (e) {
+        set({ banner: { kind: "error", text: e instanceof Error ? e.message : String(e) } })
+        return false
+      }
+    },
+
     newChatWith: (text) => {
       // the composer keeps unsent text under a per-thread key; "new" is the chat not created yet
       prefs.set("chrysalis.agent.draft.new", text)
@@ -438,7 +469,7 @@ export const useAgent = create<AgentState>()((set, get) => {
         adoptSessionKey(res.sessionId)
         const finalParts = partsFromResponse(res)
         set((st) => ({
-          msgs: st.msgs.map((m) => (m.id === id ? { ...m, parts: finalParts, streaming: false } : m)),
+          msgs: st.msgs.map((m) => (m.id === id ? { ...m, parts: finalParts, streaming: false, ...(res.checkpoints?.length ? { checkpoints: res.checkpoints } : {}) } : m)),
           running: false,
           sessionId: res.sessionId,
           usage: res.usage ?? null,

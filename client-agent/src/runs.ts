@@ -1,7 +1,7 @@
 // Engine run/turn records → the flat part list the UI renders. Both the
 // session history loader and the final POST response go through here, so a
 // stream and its authoritative record land on the same shapes.
-import type { AgentResponse, EngineRun, EngineTool, EngineTurn } from "./api.js"
+import type { AgentResponse, EngineRun, EngineTool, EngineTurn, RunCheckpoint } from "./api.js"
 import type { StreamEvent } from "./streaming.js"
 
 export type ToolState = "running" | "ok" | "error"
@@ -42,6 +42,8 @@ export interface Msg {
   /** Set on the live in-flight assistant message; drives part statuses so
    *  the reasoning disclosure auto-opens while it streams. */
   streaming?: boolean
+  /** apps the run changed, each with the checkpoint taken before the change */
+  checkpoints?: RunCheckpoint[]
 }
 
 let seq = 0
@@ -133,7 +135,8 @@ export function msgsFromRuns(runs: EngineRun[]): Msg[] {
     const parts = turns.length
       ? partsFromTurns(turns)
       : partsLegacy({ thinking: run.thinking, thinkingMs: run.thinkingMs, tools: run.tools, text: run.assistant })
-    if (parts.length) msgs.push({ id: `a${run.at}`, runAt: run.at, role: "assistant", parts })
+    if (parts.length)
+      msgs.push({ id: `a${run.at}`, runAt: run.at, role: "assistant", parts, ...(run.checkpoints?.length ? { checkpoints: run.checkpoints } : {}) })
   }
   return msgs
 }

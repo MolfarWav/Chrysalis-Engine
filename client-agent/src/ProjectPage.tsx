@@ -2,11 +2,13 @@
 // and skills. Apps are projects of their own folder; free projects live in
 // projects/<name>. What is put here reaches every chat started in the project.
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn, shortModelName } from "@/lib/utils"
 import { ChatCircle, DownloadSimple, FileText, Plus, Trash, UploadSimple } from "@phosphor-icons/react"
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type DragEvent, type ReactNode } from "react"
-import { PROJECT_FILE_ACCEPT, projectFileProblem, projectsApi, type ProjectDetail, type ProjectFile } from "./api"
+import { PROJECT_FILE_ACCEPT, projectFileProblem, projectsApi, type Checkpoint, type ProjectDetail, type ProjectFile } from "./api"
+import { restoreConfirm } from "./Checkpoints"
 import { SidebarToggle } from "./Header"
 import { ProjectIcon } from "./Sidebar"
 import { useAgent } from "./store"
@@ -31,6 +33,14 @@ function whenLabel(at: number | null): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
 }
 
+function agoLabel(at: number): string {
+  const min = Math.floor((Date.now() - at) / 60_000)
+  if (min < 1) return "just now"
+  if (min < 60) return `${min} min ago`
+  if (min < 24 * 60) return `${Math.floor(min / 60)} h ago`
+  return `${Math.floor(min / (24 * 60))} d ago`
+}
+
 /** `apps/<id>` or `projects/<name>`: the folder a project id stands for */
 export function projectFolder(id: string): string {
   return id.startsWith("app:") ? `apps/${id.slice(4)}` : `projects/${id.replace(/^project:/, "")}`
@@ -43,7 +53,7 @@ function Card({ title, aside, children, className, ...rest }: {
   className?: string
 } & ComponentProps<"section">): ReactNode {
   return (
-    <section className={cn("bg-card rounded-xl border p-4", className)} {...rest}>
+    <section className={cn("bg-card min-w-0 rounded-xl border p-4", className)} {...rest}>
       <h3 className="mb-2.5 flex items-baseline justify-between gap-3 text-sm font-semibold">
         <span>{title}</span>
         {aside ? <span className="text-muted-foreground min-w-0 truncate text-xs font-normal">{aside}</span> : null}
@@ -383,6 +393,93 @@ function DefaultModel({ detail }: { detail: ProjectDetail }): ReactNode {
   )
 }
 
+const CHECKPOINTS_SHOWN = 8
+
+/** An app's code history: saved points it can go back to. Restore never
+ *  touches data, chats or uploads, and saves the current state first. */
+function Checkpoints({ detail }: { detail: ProjectDetail }): ReactNode {
+  const setBanner = useAgent((s) => s.setBanner)
+  const restore = useAgent((s) => s.restoreCheckpoint)
+  const rev = useAgent((s) => s.checkpointsRev)
+  const app = detail.id.replace(/^app:/, "")
+  const [list, setList] = useState<Checkpoint[] | null>(null)
+  const [all, setAll] = useState(false)
+  const [label, setLabel] = useState("")
+  const [busy, setBusy] = useState(false)
+
+  // rev: a restore elsewhere (the banner's Undo, a chat message) changes the list
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rev only triggers the reload
+  useEffect(() => {
+    projectsApi.checkpoints(detail.id).then(setList, (e) => {
+      setList([])
+      setBanner({ kind: "error", text: errText(e) })
+    })
+  }, [detail.id, rev, setBanner])
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      const cp = await projectsApi.createCheckpoint(detail.id, label.trim() || "saved by hand")
+      if (list?.some((c) => c.id === cp.id)) setBanner({ kind: "info", text: `Nothing changed since "${cp.label}"` })
+      setLabel("")
+      setList(await projectsApi.checkpoints(detail.id))
+    } catch (e) {
+      setBanner({ kind: "error", text: errText(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const shown = all ? list : list?.slice(0, CHECKPOINTS_SHOWN)
+  return (
+    <Card title="Checkpoints" aside="the app's code, not its data" data-testid="checkpoints">
+      <form
+        className="mb-3 flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (!busy) void save()
+        }}
+      >
+        <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label (optional)" aria-label="Checkpoint label" maxLength={120} disabled={busy} />
+        <Button type="submit" variant="outline" disabled={busy}>
+          Save checkpoint
+        </Button>
+      </form>
+      {!list ? (
+        <p className="text-muted-foreground text-sm">Loading…</p>
+      ) : list.length ? (
+        <ul className="flex flex-col gap-1">
+          {shown?.map((c) => (
+            <li key={c.id} className="bg-muted/40 flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm">
+              <span className="min-w-0 flex-1 truncate" title={c.label}>
+                {c.label}
+              </span>
+              {c.auto ? <span className="text-muted-foreground shrink-0 rounded-full border px-1.5 text-[10px]">auto</span> : null}
+              <span className="text-muted-foreground shrink-0 text-xs">{agoLabel(c.at)}</span>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => {
+                  if (window.confirm(restoreConfirm(app, c.label))) void restore(app, c.id)
+                }}
+              >
+                Restore
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-muted-foreground text-sm">No checkpoints yet. The agent takes one before it changes the app, or save one yourself.</p>
+      )}
+      {list && list.length > CHECKPOINTS_SHOWN ? (
+        <button type="button" className="text-muted-foreground hover:text-foreground mt-2 text-xs underline underline-offset-2" onClick={() => setAll((v) => !v)}>
+          {all ? "Show fewer" : `Show all ${list.length}`}
+        </button>
+      ) : null}
+    </Card>
+  )
+}
+
 function ProjectActions({ detail }: { detail: ProjectDetail }): ReactNode {
   const refreshProjects = useAgent((s) => s.refreshProjects)
   const showChat = useAgent((s) => s.showChat)
@@ -434,6 +531,7 @@ function ProjectBody({ detail }: { detail: ProjectDetail }): ReactNode {
         </div>
         <Instructions key={detail.instructions} detail={detail} />
         <Files detail={detail} />
+        {detail.kind === "app" ? <Checkpoints detail={detail} /> : null}
         <ProjectChats detail={detail} />
       </div>
       <div className="grid min-w-0 gap-4">

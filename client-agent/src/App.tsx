@@ -179,9 +179,16 @@ export default function App(): ReactNode {
               }`}
             >
               <span>{banner.text}</span>
-              <button className="underline" onClick={() => setBanner(null)}>
-                Dismiss
-              </button>
+              <span className="flex shrink-0 gap-3">
+                {banner.action ? (
+                  <button className="font-medium underline" onClick={banner.action.run}>
+                    {banner.action.label}
+                  </button>
+                ) : null}
+                <button className="underline" onClick={() => setBanner(null)}>
+                  Dismiss
+                </button>
+              </span>
             </div>
           ) : null}
           {view.kind === "project" ? <ProjectPage key={view.id} id={view.id} /> : <Thread components={{ ToolFallback: AgentToolFallback }} />}

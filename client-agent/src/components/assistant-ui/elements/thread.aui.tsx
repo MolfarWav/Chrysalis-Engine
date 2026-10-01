@@ -44,6 +44,7 @@ import {
 import { ArrowDown, ArrowUp, Check, CaretLeft, CaretRight, Copy, DownloadSimple, Chat, Microphone, DotsThree, PencilSimple, ArrowsClockwise, Square } from "@phosphor-icons/react";
 import { useEnterSends } from "@/hooks/use-touch-ui";
 import { currentProjectId, effectiveModel, useAgent as useAgentStore } from "@/store";
+import { RunCheckpoints } from "@/Checkpoints";
 import { ComposerProjectRow, ProjectAttachButton, ProjectContextLine, SaveToProjectAction } from "@/ProjectChat";
 import {
   createContext,
@@ -617,6 +618,7 @@ const AssistantMessage: FC = () => {
         </MessagePrimitive.GroupedParts>
         <MessageError />
       </div>
+      <RunCheckpoints />
 
       <div
         data-slot="aui_assistant-message-footer"

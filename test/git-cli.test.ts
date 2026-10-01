@@ -182,3 +182,108 @@ describe("agent git clone", () => {
   });
 });
 
+describe("agent git after the shell deleted files", () => {
+  const rmDisk = (rel: string) => fs.rmSync(path.join(dir, rel), { recursive: true, force: true });
+  const inHead = async () => (await run("ls-files")).split("\n");
+  const clean = async () => expect(await run("status")).toContain("working tree clean");
+
+  it("status, status -s and diff show a deleted file", async () => {
+    rmDisk("apps/demo/data/notes.json");
+    expect(await run("status")).toContain("deleted:    apps/demo/data/notes.json");
+    expect(await run("status --short")).toBe(" D apps/demo/data/notes.json");
+    expect(await run("diff --name-status")).toBe("D\tapps/demo/data/notes.json");
+    expect(await run("diff")).toContain("deleted file");
+  });
+
+  // every spelling a model plausibly types after `rm` in bash; each must end
+  // with the file gone from HEAD's tree and a clean status
+  const spellings = [
+    ["commit -m x"],
+    ["commit -am x"],
+    ["commit -a -m x"],
+    ["add -A", "commit -m x"],
+    ["add .", "commit -m x"],
+    ["add -u", "commit -m x"],
+    ["add apps/demo/data/notes.json", "commit -m x"],
+    ["add -- apps/demo/data/notes.json", "commit -m x"],
+    ["rm apps/demo/data/notes.json", "commit -m x"],
+    ["rm -f apps/demo/data/notes.json", "commit -m x"],
+  ];
+  for (const cmds of spellings) {
+    it(`a file deleted in the shell is committed by: ${cmds.join(" && ")}`, async () => {
+      rmDisk("apps/demo/data/notes.json");
+      // each step must succeed, as a `&&` chain stops at the first that does not
+      const last = cmds[cmds.length - 1] ?? "";
+      for (const c of cmds.slice(0, -1)) await run(c);
+      expect(await run(last)).toMatch(/^\[main [0-9a-f]{8}\] x$/);
+      expect(await inHead()).not.toContain("apps/demo/data/notes.json");
+      expect(await run("log --stat -n 1")).toContain("apps/demo/data/notes.json | 1 -");
+      expect(await run("show --stat HEAD")).toContain("1 file changed, 0 insertions(+), 1 deletion(-)");
+      expect(await run("show HEAD~1:apps/demo/data/notes.json")).toBe("{\"a\":1}\n");
+      await clean();
+    });
+  }
+
+  it("a deleted folder with several files is committed whole", async () => {
+    rmDisk("apps/demo/src");
+    expect(await run("status -s")).toBe(" D apps/demo/src/App.tsx\n D apps/demo/src/extra.ts");
+    await run("add -A");
+    await run("commit -m folder");
+    expect(await inHead()).toEqual(["apps/demo/data/notes.json", "settings.json"]);
+    expect(await run("show --stat HEAD")).toContain("2 files changed, 0 insertions(+), 4 deletions(-)");
+    await clean();
+  });
+
+  it("rm -r deletes a tracked folder, and the next commit records it", async () => {
+    expect(await run("rm -r apps/demo/src")).toBe("rm 'apps/demo/src/App.tsx'\nrm 'apps/demo/src/extra.ts'");
+    expect(fs.existsSync(path.join(dir, "apps/demo/src/App.tsx"))).toBe(false);
+    expect(await run("status -s")).toBe(" D apps/demo/src/App.tsx\n D apps/demo/src/extra.ts");
+    await run("commit -m folder");
+    expect(await inHead()).toEqual(["apps/demo/data/notes.json", "settings.json"]);
+    await clean();
+  });
+
+  it("a rename done as delete plus create commits as both halves", async () => {
+    fs.renameSync(path.join(dir, "apps/demo/src/extra.ts"), path.join(dir, "apps/demo/src/moved.ts"));
+    expect(await run("status -s")).toBe(" D apps/demo/src/extra.ts\n?? apps/demo/src/moved.ts");
+    await run("add -A");
+    await run("commit -m rename");
+    expect(await inHead()).toContain("apps/demo/src/moved.ts");
+    expect(await inHead()).not.toContain("apps/demo/src/extra.ts");
+    expect(await run("diff HEAD~1 HEAD --name-status")).toBe("D\tapps/demo/src/extra.ts\nA\tapps/demo/src/moved.ts");
+    await clean();
+  });
+
+  it("restore brings a deleted file back with nothing left to commit", async () => {
+    rmDisk("apps/demo/src/extra.ts");
+    expect(await run("restore apps/demo/src/extra.ts")).toContain("restored apps/demo/src/extra.ts");
+    expect(read("apps/demo/src/extra.ts")).toBe("export {}\n");
+    await clean();
+  });
+
+  it("add accepts any pathspec but never one outside the workspace", async () => {
+    expect(await run("add -A")).toContain("no staging area");
+    expect(await run("add -- .")).toContain("no staging area");
+    await expect(run("add ../elsewhere")).rejects.toThrow(/outside the workspace/);
+  });
+
+  it("rm refuses what real git refuses, and what the workspace must keep", async () => {
+    await expect(run("rm")).rejects.toThrow(/needs paths/);
+    await expect(run("rm nope.txt")).rejects.toThrow(/did not match/);
+    await expect(run("rm apps/demo/src")).rejects.toThrow(/without -r/);
+    await expect(run("rm -r .")).rejects.toThrow(/whole workspace/);
+    await expect(run("rm --cached apps/demo/src/extra.ts")).rejects.toThrow(/cannot be untracked/);
+    await expect(run("rm settings.json")).rejects.toThrow(/settings/);
+    await expect(run("rm apps/demo/src/extra.ts", true)).rejects.toThrow(/Plan mode/);
+    // a protected path the user has not allowed stays, as with restore and revert
+    const guarded = runGitCli({ dir, username: "alice", readOnly: false, writeRefused: (f) => (f.startsWith("apps/demo/src/") ? "protected" : null) }, "rm -f apps/demo/src/extra.ts");
+    await expect(guarded).rejects.toThrow(/protected/);
+    expect(fs.existsSync(path.join(dir, "apps/demo/src/extra.ts"))).toBe(true);
+    // a file with edits not committed yet needs -f, as in git
+    write("apps/demo/src/extra.ts", "edited\n");
+    await expect(run("rm apps/demo/src/extra.ts")).rejects.toThrow(/not committed yet/);
+    expect(read("apps/demo/src/extra.ts")).toBe("edited\n");
+    expect(await run("rm -f apps/demo/src/extra.ts")).toBe("rm 'apps/demo/src/extra.ts'");
+    expect(fs.existsSync(path.join(dir, "apps/demo/src/extra.ts"))).toBe(false);
+  });
+});

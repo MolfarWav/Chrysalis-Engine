@@ -6,8 +6,9 @@
  * The workspace has one line of history that the engine commits to on its
  * own (file tools, app routes, restores), so there is no staging area,
  * branch or remote to manage. Reads: status, diff, log, show. Writes:
- * commit, restore (checkout -- path), revert. clone copies another
- * repository's files into repos/, outside that history.
+ * commit, restore (checkout -- path), revert, rm. `add` is accepted and does
+ * nothing, so the habitual `git add -A && git commit` still reaches the commit.
+ * clone copies another repository's files into repos/, outside that history.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -524,6 +525,54 @@ async function revert(o: GitCliOptions, args: string[]): Promise<string> {
   return writeBack(o, oid, files, `Revert "${c.message.trim().split("\n")[0]}"`);
 }
 
+/** `add` has nothing to stage: the next commit takes every change, deletions
+ *  included. It succeeds (instead of refusing) so `git add -A && git commit`
+ *  and `git add <deleted file>` keep working in a shell chain. */
+async function add(o: GitCliOptions, args: string[]): Promise<string> {
+  const { flags, paths } = splitPathspecs(args);
+  for (const spec of [...flags.filter((f) => !f.startsWith("-")), ...paths]) normalizeSpec(spec, o.cwd);
+  return "(no staging area here: the next commit takes every change, deletions included)";
+}
+
+/** Delete tracked files from the workspace. The deletion then waits for the
+ *  next commit like any other edit made through bash. */
+async function rm(o: GitCliOptions, args: string[]): Promise<string> {
+  refuseInPlanMode(o, "rm");
+  const { flags, paths } = splitPathspecs(args);
+  if (flags.includes("--cached")) return fail("rm --cached: files cannot be untracked here, every file outside the git boundary is part of the workspace history. Delete the file, then commit.");
+  const letters = flags.filter((f) => /^-[^-]/.test(f)).join("");
+  const force = flags.includes("--force") || letters.includes("f");
+  const recursive = letters.includes("r");
+  const specs = [...flags.filter((f) => !f.startsWith("-")), ...paths].map((p) => normalizeSpec(p, o.cwd));
+  if (!specs.length) return fail("rm needs paths: rm [-r] [-f] [--] <path>...");
+  if (specs.includes("")) return fail("rm names files or folders, not the whole workspace");
+  const head = await resolveRev(o.dir, "HEAD");
+  const tracked = await treeFiles(o.dir, head, specs);
+  const doomed = new Set<string>();
+  for (const spec of specs) {
+    const hits = [...tracked.keys()].filter((f) => within(f, [spec]));
+    if (!hits.length) fail(`pathspec '${spec}' did not match any file in the workspace history`);
+    if (!recursive && hits.some((f) => f !== spec)) fail(`not removing '${spec}' recursively without -r`);
+    for (const f of hits) doomed.add(f);
+  }
+  const files = [...doomed].sort();
+  const guard = makePathGuard(o.dir);
+  const edited: string[] = [];
+  for (const file of files) {
+    // protected paths (protect.ts) hold for a delete as for any other write
+    const reason = agentWriteDenied(file) ?? o.writeRefused?.(file) ?? null;
+    if (reason) fail(`${file}: ${reason}`);
+    guard.assertWritable(path.join(o.dir, file), file);
+    const now = workFile(o.dir, file);
+    if (now && !(await blobAt(o.dir, head, file))?.equals(now)) edited.push(file);
+  }
+  if (edited.length && !force) {
+    return fail(`these files have changes that are not committed yet:\n${edited.map((f) => `  ${f}`).join("\n")}\nCommit them first, or use rm -f to delete them anyway.`);
+  }
+  for (const file of files) fs.rmSync(path.join(o.dir, file), { force: true });
+  return files.map((f) => `rm '${f}'`).join("\n");
+}
+
 async function lsTree(o: GitCliOptions, args: string[]): Promise<string> {
   const { flags, paths } = splitPathspecs(args);
   const loose = flags.filter((f) => !f.startsWith("-"));
@@ -602,7 +651,6 @@ async function clone(o: GitCliOptions, args: string[]): Promise<string> {
 }
 
 const UNSUPPORTED: Record<string, string> = {
-  add: "there is no staging area: commit -m takes every change at once",
   stage: "there is no staging area: commit -m takes every change at once",
   reset: "history is never rewritten here: restore --source <commit> -- <path> puts files back, revert <commit> undoes a commit",
   rebase: "history is never rewritten here: revert <commit> undoes a commit",
@@ -616,11 +664,10 @@ const UNSUPPORTED: Record<string, string> = {
   pull: "the workspace is local: there is no remote; clone a repository again into a new repos/<name> for a newer copy",
   fetch: "the workspace is local: there is no remote; clone a repository again into a new repos/<name> for a newer copy",
   init: "the workspace repository already exists",
-  rm: "delete the file, then commit",
   mv: "move the file, then commit",
 };
 
-export const GIT_COMMANDS = "status, diff, log, show, ls-tree, ls-files, commit, restore, checkout <commit> -- <path>, revert, clone <https-url> [repos/<name>]";
+export const GIT_COMMANDS = "status, diff, log, show, ls-tree, ls-files, add (does nothing: no staging area), rm, commit, restore, checkout <commit> -- <path>, revert, clone <https-url> [repos/<name>]";
 
 /** Run one git command line against the workspace repository. */
 export function runGitCli(o: GitCliOptions, input: string): Promise<string> {
@@ -637,6 +684,8 @@ export async function runGitArgs(o: GitCliOptions, args: string[]): Promise<stri
     case "diff": out = await diff(o, rest); break;
     case "log": out = await log(o, rest); break;
     case "show": out = await show(o, rest); break;
+    case "add": out = await add(o, rest); break;
+    case "rm": out = await rm(o, rest); break;
     case "commit": out = await commit(o, rest); break;
     case "restore": out = await restore(o, rest); break;
     case "checkout": out = await checkout(o, rest); break;

@@ -53,9 +53,9 @@ export const AGENT_WRITE_DENYLIST: readonly { pattern: RegExp; reason: string }[
   { pattern: /^store(\/|$)/i, reason: "plugin store is runtime state managed by services (use store APIs)" },
   // memory and skills change only through memory_propose / skill_propose,
   // which the user confirms; a file tool or the shell would skip that
-  { pattern: /^(memory|skills)(\/|$)/i, reason: "memory and skills change only through memory_propose / skill_propose (the user confirms each)" },
-  { pattern: /^apps\/[^/]+\/\.(memory|skills)(\/|$)/i, reason: "memory and skills change only through memory_propose / skill_propose (the user confirms each)" },
-  { pattern: /^projects\/[^/]+\/\.(memory|skills)(\/|$)/i, reason: "memory and skills change only through memory_propose / skill_propose (the user confirms each)" },
+  { pattern: /^(memory|skills)(\/|$)/i, reason: "memory and skills change only through memory_propose / skill_propose / skill_edit (the user confirms each)" },
+  { pattern: /^apps\/[^/]+\/\.(memory|skills)(\/|$)/i, reason: "memory and skills change only through memory_propose / skill_propose / skill_edit (the user confirms each)" },
+  { pattern: /^projects\/[^/]+\/\.(memory|skills)(\/|$)/i, reason: "memory and skills change only through memory_propose / skill_propose / skill_edit (the user confirms each)" },
   // project files are the user's uploads and live outside git, so a write
   // here could not be undone: the agent reads them, the project page changes them
   { pattern: PROJECT_FILES, reason: "project files are the user's uploads (outside git, so a change could not be undone); read them, and ask the user to change them on the project page" },

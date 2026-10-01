@@ -10,6 +10,11 @@
  *   projects/<name>/.memory/MEMORY.md and projects/<name>/.skills/: the same
  *                                     for a free project (see projects.ts)
  *
+ * Built-in skills ship with the engine (builtin-skills/ in its resources) and
+ * update with it. A global workspace skill of the same name replaces one, so
+ * a change the user or the agent makes is a workspace copy; deleting that
+ * copy resets the skill to the built-in version.
+ *
  * The agent never writes these files itself (paths.ts denies them to every
  * file tool and the sandbox). It proposes; the user confirms each entry in an
  * ask card; only then does the engine write and commit. Global memory and the
@@ -20,8 +25,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Type } from "typebox";
+import { createTwoFilesPatch } from "diff";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import * as git from "../git.js";
+import { resourcesDir } from "../install.js";
 import type { UserPaths } from "../paths.js";
 import type { AgentToolOptions } from "./tools.js";
 
@@ -132,8 +139,12 @@ export interface SkillInfo {
   description: string;
   /** "global", "app:<id>" or "project:<name>" */
   scope: string;
-  /** Workspace-relative SKILL.md path. */
+  /** Workspace-relative SKILL.md path; "built-in:<name>" for an engine skill. */
   file: string;
+  /** Served from the engine (no workspace copy). */
+  builtin?: boolean;
+  /** A workspace copy that replaces the built-in skill of the same name. */
+  overrides?: boolean;
 }
 
 /** name/description from a SKILL.md's frontmatter; null when it has none. */
@@ -146,6 +157,13 @@ export function parseSkill(md: string): { name: string; description: string; bod
   if (!name || !description) return null;
   return { name, description, body: m[2]!.trim() };
 }
+
+let builtinDirOverride: string | null = null;
+/** Tests point this at a fixture folder; null restores the engine's own. */
+export function setBuiltinSkillsDir(dir: string | null): void {
+  builtinDirOverride = dir;
+}
+const builtinDir = (): string => builtinDirOverride ?? path.join(resourcesDir(), "builtin-skills");
 
 function skillsIn(root: string, dirRel: string, scope: string): SkillInfo[] {
   const out: SkillInfo[] = [];
@@ -164,6 +182,13 @@ function skillsIn(root: string, dirRel: string, scope: string): SkillInfo[] {
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** The engine's own skills. The folder name is the skill's name. */
+export function builtinSkills(): SkillInfo[] {
+  return skillsIn(builtinDir(), ".", "global")
+    .filter((s) => SKILL_NAME.test(s.name) && s.file === `./${s.name}/SKILL.md`)
+    .map((s) => ({ ...s, file: `built-in:${s.name}`, builtin: true }));
+}
+
 function subdirs(root: string, rel: string): string[] {
   try {
     return fs
@@ -176,8 +201,9 @@ function subdirs(root: string, rel: string): string[] {
   }
 }
 
-/** Every valid skill: the global ones, then each app's, then each free
- *  project's. With a scope ("app:<id>" or "project:<name>"), that one's only. */
+/** Every valid skill: the global ones (workspace copies replacing built-ins of
+ *  the same name), then each app's, then each free project's. With a scope
+ *  ("app:<id>" or "project:<name>"), that one's only. */
 export function listSkills(root: string, only?: string): SkillInfo[] {
   if (only) {
     const name = /^project:(.+)$/.exec(only)?.[1];
@@ -185,13 +211,75 @@ export function listSkills(root: string, only?: string): SkillInfo[] {
     const id = only.replace(/^app:/, "");
     return skillsIn(root, appSkillsDir(id), `app:${id}`);
   }
-  const out = skillsIn(root, GLOBAL_SKILLS, "global");
+  const builtin = builtinSkills();
+  const own = skillsIn(root, GLOBAL_SKILLS, "global").map((s) => (builtin.some((b) => b.name === s.name) ? { ...s, overrides: true } : s));
+  const out = [...own, ...builtin.filter((b) => !own.some((s) => s.name === b.name))].sort((a, b) => a.name.localeCompare(b.name));
   for (const a of subdirs(root, "apps")) out.push(...skillsIn(root, appSkillsDir(a), `app:${a}`));
   for (const n of subdirs(root, "projects")) if (PROJECT_NAME.test(n)) out.push(...skillsIn(root, projectSkillsDir(n), `project:${n}`));
   return out;
 }
 
-const skillLine = (s: SkillInfo): string => `- ${s.name}${s.scope === "global" ? "" : ` (${s.scope})`}: ${s.description}`;
+/** Where a skill's folder is on disk. */
+const skillDirAbs = (root: string, s: SkillInfo): string =>
+  s.builtin ? path.join(builtinDir(), s.name) : path.join(root, path.dirname(s.file));
+
+/** A skill's SKILL.md text, built-in or not. */
+export function skillText(root: string, s: SkillInfo): string {
+  try {
+    return fs.readFileSync(path.join(skillDirAbs(root, s), "SKILL.md"), "utf8");
+  } catch {
+    return "";
+  }
+}
+
+/** A supporting file's path inside a skill folder: one optional folder, a
+ *  plain name, a text extension. */
+const SKILL_FILE = /^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,31}\/)?[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.(?:md|txt|json|jsonl|csv|tsv|yaml|yml|py|sh|js|mjs|ts)$/;
+const SKILL_FILE_MAX = 50_000;
+const SKILL_FILES_MAX = 8;
+
+export function isSkillFilePath(rel: string): boolean {
+  return SKILL_FILE.test(rel) && rel !== "SKILL.md" && !rel.includes("..");
+}
+
+/** The files beside SKILL.md (references, scripts), relative to the folder. */
+export function skillFiles(root: string, s: SkillInfo): string[] {
+  const dir = skillDirAbs(root, s);
+  const out: string[] = [];
+  const walk = (rel: string, depth: number) => {
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(path.join(dir, rel), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory() && depth === 0) walk(r, 1);
+      else if (e.isFile() && isSkillFilePath(r)) out.push(r);
+    }
+  };
+  walk("", 0);
+  return out.sort();
+}
+
+/** One supporting file's text; throws for a bad or missing path. */
+export function readSkillFile(root: string, s: SkillInfo, rel: string): string {
+  if (!isSkillFilePath(rel)) throw new Error(`"${rel}" is not a skill file path (folder/name.ext, text files only)`);
+  try {
+    return fs.readFileSync(path.join(skillDirAbs(root, s), rel), "utf8");
+  } catch {
+    throw new Error(`skill "${s.name}" has no file "${rel}"`);
+  }
+}
+
+/** The first skill of that name (in that scope, when given). */
+export function findSkill(root: string, name: string, scope?: string): SkillInfo | undefined {
+  return listSkills(root).find((s) => s.name === name && (!scope || s.scope === scope));
+}
+
+const skillLine = (s: SkillInfo): string =>
+  `- ${s.name}${s.scope === "global" ? "" : ` (${s.scope})`}${s.builtin ? " [built-in]" : ""}: ${s.description}`;
 
 // ---------- what the model sees ----------
 
@@ -214,7 +302,9 @@ ${skills.length ? skills.map(skillLine).join("\n") : "(none yet)"}
 - A project's memory (${appMemoryPath("<id>")}) and its skills are shown to you automatically the first time you touch that app in a session. A chat opened inside a project has that project's section below instead.
 - To remember something durable — a user preference, a decision, where a project stands, a gotcha that cost real time — call memory_propose with scope "global", "app:<id>" or "project:<name>". Never say something is saved until the tool says so. Do not propose trivia, one-off details, or secrets (keys, passwords, tokens).
 - After substantial work, at a natural stopping point, propose what is worth keeping — once, not after every message. When an entry is outdated, pass replaces with a phrase from the old entry.
-- Before a task a skill covers, call skill_load and follow it. When you worked out a procedure worth repeating, offer it with skill_propose.
+- Before a task a skill covers, call skill_load and follow it.
+- Skills are how this workspace gets better at its work. Propose one (skill_propose) when a task took several attempts and you now know the path, when the user corrected you the same way twice, or when they ask. When a skill you followed was wrong or missed a step, fix it with skill_edit right after the task. Load skill-authoring first. Propose once, at a natural stopping point, with one line on what it improves; the user saves or skips it.
+- A [built-in] skill ships with Chrysalis. Changing one saves a workspace copy that replaces it; the user can reset it to the built-in version.
 - memory/, skills/, apps/*/.memory/, apps/*/.skills/ and the same folders under projects/ cannot be written by file tools or the shell: use the tools.`;
 }
 
@@ -246,6 +336,51 @@ export function projectContextFor(root: string, appId: string): string | null {
 }
 
 // ---------- tools ----------
+
+/** A whole SKILL.md from its parts, validated. */
+export function composeSkill(name: string, description: string, body: string): string {
+  if (!SKILL_NAME.test(name)) throw new Error("name must be lowercase letters, digits and dashes (max 48)");
+  const desc = description.replace(/\s+/g, " ").trim();
+  if (!desc || desc.length > 300) throw new Error("description must be one line of at most 300 characters");
+  const content = body.trim();
+  if (!content) throw new Error("body is empty");
+  if (content.length > SKILL_BODY_MAX) throw new Error(`body is over ${SKILL_BODY_MAX} characters: split it, or move reference material into files`);
+  return `---\nname: ${name}\ndescription: ${desc}\n---\n\n${content}\n`;
+}
+
+function checkSkillFiles(files: { path: string; content: string }[]): { path: string; content: string }[] {
+  if (files.length > SKILL_FILES_MAX) throw new Error(`at most ${SKILL_FILES_MAX} files per skill change`);
+  const seen = new Set<string>();
+  return files.map((f, i) => {
+    const rel = String(f?.path ?? "").replace(/\\/g, "/").replace(/^\.\//, "");
+    if (!isSkillFilePath(rel)) throw new Error(`file ${i + 1}: "${rel}" is not allowed. Use folder/name.ext with a text extension (md, txt, json, csv, yaml, py, sh, js).`);
+    if (seen.has(rel)) throw new Error(`file ${i + 1}: "${rel}" appears twice`);
+    seen.add(rel);
+    const content = String(f?.content ?? "");
+    if (content.length > SKILL_FILE_MAX) throw new Error(`file ${rel} is over ${SKILL_FILE_MAX} characters`);
+    return { path: rel, content };
+  });
+}
+
+function writeSkillFiles(root: string, file: string, skillMd: string, files: { path: string; content: string }[]): void {
+  const dir = path.join(root, path.dirname(file));
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(root, file), skillMd, "utf8");
+  for (const f of files) {
+    const abs = path.join(dir, f.path);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, f.content, "utf8");
+  }
+}
+
+function skillDiff(file: string, before: string, after: string): string | undefined {
+  if (before === after) return undefined;
+  const body = createTwoFilesPatch(`a/${file}`, `b/${file}`, before, after, "", "", { context: 2 })
+    .replace(/^(Index [^\n]*\n)?={10,}\n/, "")
+    .trimEnd();
+  if (!/^@@/m.test(body)) return undefined;
+  return body.length > 12_000 ? `${body.slice(0, 12_000)}\n… (diff truncated)` : body;
+}
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: {} });
 
@@ -288,62 +423,124 @@ export function buildMemoryTools(username: string, p: UserPaths, opts: Pick<Agen
   const skillLoad: AgentTool = {
     name: "skill_load",
     label: "Load a skill",
-    description: "Load a skill's full instructions by name (from the skills list in your instructions, or an app's skills). Follow them for the task at hand.",
+    description:
+      "Load a skill's full instructions by name (from the skills list in your instructions, or an app's skills). Follow them for the task at hand. The result lists the skill's extra files; pass file to read one (e.g. references/table.md).",
     parameters: Type.Object({
       name: Type.String(),
       scope: Type.Optional(Type.String({ description: '"global", "app:<app-id>" or "project:<name>"; omit to search all' })),
+      file: Type.Optional(Type.String({ description: "A file inside the skill folder to read instead of SKILL.md" })),
     }),
     async execute(_id, params) {
-      const { name, scope } = params as { name: string; scope?: string };
-      const found = listSkills(root).filter((s) => s.name === name && (!scope || s.scope === scope));
-      if (!found.length) throw new Error(`no skill named "${name}"${scope ? ` in ${scope}` : ""}`);
-      const s = found[0]!;
-      return text(`# Skill ${s.name} (${s.scope}, ${s.file})\n\n${readText(root, s.file).trim()}`);
+      const { name, scope, file } = params as { name: string; scope?: string; file?: string };
+      const s = findSkill(root, name, scope);
+      if (!s) throw new Error(`no skill named "${name}"${scope ? ` in ${scope}` : ""}`);
+      if (file) return text(`# ${s.name}/${file}\n\n${readSkillFile(root, s, file)}`);
+      const files = skillFiles(root, s);
+      const where = s.builtin ? "built-in" : s.file;
+      return text(
+        `# Skill ${s.name} (${s.scope}, ${where})\n\n${skillText(root, s).trim()}` +
+          (files.length ? `\n\nFiles in this skill (read one with skill_load { name: "${s.name}", file }): ${files.join(", ")}` : ""),
+      );
     },
   };
+
+  /** Ask the user to save a skill change; null means saved, else the reply to return. */
+  const confirm = async (question: string, detail: string, diff: boolean): Promise<string | null> => {
+    if (!opts.ask) return "Not saved: the user is not available to confirm skills right now.";
+    const answer = (
+      await opts.ask({
+        question: `${question} Any other reply is sent back to me as feedback.`,
+        options: ["Save", "Skip"],
+        detail,
+        ...(diff ? { detailKind: "diff" as const } : {}),
+      })
+    ).trim();
+    if (answer === "Save") return null;
+    return !answer || answer === "Skip" || answer === "(no answer)" ? "Not saved: the user skipped this skill." : `Not saved. The user's feedback: ${answer}`;
+  };
+
+  const scopeLabel = (scope: MemoryScope): string => (scope.appId ? `app ${scope.appId}` : scope.projectName ? `project ${scope.projectName}` : "global");
 
   const skillPropose: AgentTool = {
     name: "skill_propose",
     label: "Propose a skill",
     description:
-      'Propose a new skill, or a new version of an existing one (same name and scope). The user reviews it and saves or skips it. name: lowercase-with-dashes. description: one line saying WHEN to use it (this is what you will see in the skills list). body: markdown instructions — steps, file paths, gotchas, a checklist to verify. scope: "global", "app:<app-id>" or "project:<name>".',
+      'Propose a new skill, or a new version of an existing one (same name and scope; for a small fix use skill_edit). The user reviews it (a diff for an update) and saves or skips it. Load the skill-authoring skill first. name: lowercase-with-dashes. description: one line saying WHEN to use it (this is what you will see in the skills list). body: markdown instructions — steps, file paths, gotchas, a checklist to verify. scope: "global", "app:<app-id>" or "project:<name>". files: optional extra files in the skill folder, e.g. references/<topic>.md or scripts/<name>.py.',
     parameters: Type.Object({
       name: Type.String(),
       description: Type.String(),
       body: Type.String(),
       scope: Type.Optional(Type.String({ description: '"global" (default), "app:<app-id>" or "project:<name>"' })),
+      files: Type.Optional(
+        Type.Array(Type.Object({ path: Type.String(), content: Type.String() }), { description: "Extra files: folder/name.ext (text only), up to 8" }),
+      ),
     }),
     async execute(_id, params) {
-      const { name, description, body, scope: rawScope } = params as { name: string; description: string; body: string; scope?: string };
-      if (!SKILL_NAME.test(name)) throw new Error("name must be lowercase letters, digits and dashes (max 48)");
-      const desc = description.replace(/\s+/g, " ").trim();
-      if (!desc || desc.length > 300) throw new Error("description must be one line of at most 300 characters");
-      const content = body.trim();
-      if (!content) throw new Error("body is empty");
-      if (content.length > SKILL_BODY_MAX) throw new Error(`body is over ${SKILL_BODY_MAX} characters: split it or tighten it`);
+      const { name, description, body, scope: rawScope, files } = params as {
+        name: string; description: string; body: string; scope?: string; files?: { path: string; content: string }[];
+      };
       const scope = resolveScope(root, rawScope);
+      const draft = composeSkill(name, description, body);
+      const extra = checkSkillFiles(files ?? []);
       const file = `${scope.skillsDir}/${name}/SKILL.md`;
-      const exists = fs.existsSync(path.join(root, file));
-      if (!opts.ask) return text("Not saved: the user is not available to confirm skills right now.");
-      const answer = (
-        await opts.ask({
-          question: `${exists ? "Update" : "Save"} skill "${name}" (${scope.appId ? `app ${scope.appId}` : scope.projectName ? `project ${scope.projectName}` : "global"})? When to use: ${desc}. Any other reply is sent back to me as feedback.`,
-          options: ["Save", "Skip"],
-          detail: content.length > 4000 ? `${content.slice(0, 4000)}\n… (${content.length - 4000} more characters)` : content,
-        })
-      ).trim();
-      if (answer !== "Save") {
-        return text(!answer || answer === "Skip" || answer === "(no answer)" ? "Not saved: the user skipped this skill." : `Not saved. The user's feedback: ${answer}`);
-      }
-      const abs = path.join(root, file);
-      fs.mkdirSync(path.dirname(abs), { recursive: true });
-      fs.writeFileSync(abs, `---\nname: ${name}\ndescription: ${desc}\n---\n\n${content}\n`, "utf8");
-      await git.commitAll(root, username, `skill: ${exists ? "update" : "add"} ${name}`, true).catch(() => undefined);
-      return text(`Saved ${file}. It is in your skills list from the next session; load it with skill_load now if you need it.`);
+      const own = readText(root, file);
+      // a global skill named like a built-in one replaces it: show the change against the built-in text
+      const builtin = !rawScope || rawScope === "global" ? builtinSkills().find((b) => b.name === name) : undefined;
+      const before = own || (builtin ? skillText(root, builtin) : "");
+      const fileNote = extra.length ? `\n\nFiles: ${extra.map((f) => `${f.path} (${f.content.length} chars)`).join(", ")}` : "";
+      const detail = before
+        ? `${skillDiff(file, before, draft) ?? "(SKILL.md unchanged)"}${fileNote}`
+        : `${draft.length > 4000 ? `${draft.slice(0, 4000)}\n… (${draft.length - 4000} more characters)` : draft}${fileNote}`;
+      const what = own ? "Update" : builtin ? "Customize the built-in" : "Save";
+      const refused = await confirm(`${what} skill "${name}" (${scopeLabel(scope)})?`, detail, Boolean(before));
+      if (refused) return text(refused);
+      writeSkillFiles(root, file, draft, extra);
+      await git.commitAll(root, username, `skill: ${before ? "update" : "add"} ${name}`, true).catch(() => undefined);
+      return text(`Saved ${file}${extra.length ? ` and ${extra.length} file(s)` : ""}. It is in your skills list from the next session; load it with skill_load now if you need it.`);
     },
   };
 
-  return [memoryPropose, skillLoad, skillPropose];
+  const skillEdit: AgentTool = {
+    name: "skill_edit",
+    label: "Edit a skill",
+    description:
+      "Propose a small change to an existing skill's SKILL.md: exact old → new pieces, like edit_file. The user sees a diff and saves or skips it. Copy each old piece from skill_load output, with enough lines to be unique. A built-in skill is not changed in place: the change saves a workspace copy that replaces it.",
+    parameters: Type.Object({
+      name: Type.String(),
+      scope: Type.Optional(Type.String({ description: '"global" (default), "app:<app-id>" or "project:<name>"' })),
+      edits: Type.Array(Type.Object({ old: Type.String(), new: Type.String() }), { description: "Replacements, applied in order" }),
+      description: Type.Optional(Type.String({ description: "A new one-line description, when it should change" })),
+    }),
+    async execute(_id, params) {
+      const { name, scope: rawScope, edits, description } = params as { name: string; scope?: string; edits: { old: string; new: string }[]; description?: string };
+      const scope = resolveScope(root, rawScope);
+      const found = findSkill(root, name, scope.appId ? `app:${scope.appId}` : scope.projectName ? `project:${scope.projectName}` : "global");
+      if (!found) throw new Error(`no skill named "${name}" in ${scopeLabel(scope)}: create it with skill_propose`);
+      const before = skillText(root, found);
+      const parsed = parseSkill(before);
+      if (!parsed) throw new Error(`skill "${name}" has no valid header: rewrite it with skill_propose`);
+      if (!edits?.length && !description) throw new Error("nothing to change: pass edits or description");
+      let next = parsed.body;
+      for (const [i, e] of (edits ?? []).entries()) {
+        if (!e.old) throw new Error(`edit ${i + 1}: old is empty`);
+        const at = next.indexOf(e.old);
+        if (at === -1) throw new Error(`edit ${i + 1}: old text not found in the skill. Copy it exactly from skill_load output.`);
+        if (next.indexOf(e.old, at + 1) !== -1) throw new Error(`edit ${i + 1}: old text appears more than once. Include more surrounding lines.`);
+        next = next.slice(0, at) + e.new + next.slice(at + e.old.length);
+      }
+      const draft = composeSkill(name, description ?? parsed.description, next);
+      const file = `${scope.skillsDir}/${name}/SKILL.md`;
+      const diff = skillDiff(file, before, draft);
+      if (!diff) return text("Nothing changed: the edits leave the skill as it was.");
+      const refused = await confirm(`${found.builtin ? "Customize the built-in" : "Update"} skill "${name}" (${scopeLabel(scope)})?`, diff, true);
+      if (refused) return text(refused);
+      writeSkillFiles(root, file, draft, []);
+      await git.commitAll(root, username, `skill: edit ${name}`, true).catch(() => undefined);
+      return text(`Saved ${file}.`);
+    },
+  };
+
+  return [memoryPropose, skillLoad, skillPropose, skillEdit];
 }
 
 // ---------- the user's own edits (the memory panel on the agent page) ----------
@@ -377,17 +574,49 @@ function skillFile(root: string, scopeRaw: string, name: string): string {
   return `${resolveScope(root, scopeRaw).skillsDir}/${name}/SKILL.md`;
 }
 
-export function readSkill(root: string, scopeRaw: string, name: string): { file: string; text: string } {
+/** A skill as the panel shows it: the workspace copy, else the built-in one.
+ *  Scope "builtin" reads the built-in version even when a copy replaces it. */
+export function readSkill(root: string, scopeRaw: string, name: string): { file: string; text: string; builtin: boolean; overrides: boolean; files: string[] } {
+  if (!SKILL_NAME.test(name)) throw new Error("invalid skill name");
+  const builtin = builtinSkills().find((b) => b.name === name);
+  if (scopeRaw === "builtin") {
+    if (!builtin) throw new Error(`no built-in skill "${name}"`);
+    return { file: builtin.file, text: skillText(root, builtin), builtin: true, overrides: false, files: skillFiles(root, builtin) };
+  }
   const file = skillFile(root, scopeRaw, name);
-  const text = readText(root, file);
-  if (!text) throw new Error(`no skill "${name}"`);
-  return { file, text };
+  const own = readText(root, file);
+  if (own) {
+    const info: SkillInfo = { name, description: "", scope: scopeRaw, file };
+    return { file, text: own, builtin: false, overrides: scopeRaw === "global" && Boolean(builtin), files: skillFiles(root, info) };
+  }
+  if (scopeRaw === "global" && builtin) return { file: builtin.file, text: skillText(root, builtin), builtin: true, overrides: false, files: skillFiles(root, builtin) };
+  throw new Error(`no skill "${name}"`);
 }
 
+/** One supporting file of a skill, for the panel. */
+export function readSkillFileFor(root: string, scopeRaw: string, name: string, rel: string): string {
+  const s = scopeRaw === "builtin" ? builtinSkills().find((b) => b.name === name) : findSkill(root, name, scopeRaw);
+  if (!s) throw new Error(`no skill "${name}"`);
+  return readSkillFile(root, s, rel);
+}
+
+/** The user writing a skill from the panel: no card (it is their file), the
+ *  same validation as the agent's tools. Keeps the folder's other files. */
+export function saveSkill(root: string, scopeRaw: string, name: string, description: string, body: string): string {
+  const file = skillFile(root, scopeRaw, name);
+  writeSkillFiles(root, file, composeSkill(name, description, body), []);
+  return file;
+}
+
+/** Delete a workspace skill. For a copy that replaces a built-in skill, this
+ *  is the reset: the built-in version shows again. */
 export function deleteSkill(root: string, scopeRaw: string, name: string): string {
   const file = skillFile(root, scopeRaw, name);
   const dir = path.join(root, path.dirname(file));
-  if (!fs.existsSync(dir)) throw new Error(`no skill "${name}"`);
+  if (!fs.existsSync(dir)) {
+    if (scopeRaw === "global" && builtinSkills().some((b) => b.name === name)) throw new Error(`"${name}" is a built-in skill: it cannot be deleted, only replaced by your own version`);
+    throw new Error(`no skill "${name}"`);
+  }
   fs.rmSync(dir, { recursive: true, force: true });
   return file;
 }

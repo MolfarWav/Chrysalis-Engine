@@ -21,7 +21,7 @@
  *                                        with JDK 17+ and ANDROID_HOME)
  *
  * resources/ holds what the engine serves but cannot compile in:
- * the two built frontends, the builder and sandbox browser
+ * the two built frontends, the agent's built-in skills, the builder and sandbox browser
  * bundles (prebuilt, since there is no bundler at runtime), and the
  * sandbox's Python runtime files.
  */
@@ -92,6 +92,8 @@ for (const dir of ["client/dist", "client-agent/dist"]) {
   if (!fs.existsSync(path.join(repo, dir, "index.html"))) throw new Error(`${dir} is missing: run without --skip-frontends`);
   fs.cpSync(path.join(repo, dir), path.join(resources, dir), { recursive: true });
 }
+// the agent's built-in skills: read at runtime, updated with the engine
+fs.cpSync(path.join(repo, "builtin-skills"), path.join(resources, "builtin-skills"), { recursive: true });
 const builder = await buildBuilderForRelease();
 writePrebuilt(path.join(resources, "prebuilt", "builder"), builder);
 const sandbox = await buildSandboxForRelease();

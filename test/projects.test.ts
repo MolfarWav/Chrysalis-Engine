@@ -91,7 +91,8 @@ describe("project layout", () => {
     fs.mkdirSync(path.join(p.root, "projects/ideas/.skills/brainstorm"), { recursive: true });
     fs.writeFileSync(path.join(p.root, "projects/ideas/.skills/brainstorm/SKILL.md"), "---\nname: brainstorm\ndescription: When generating ideas\n---\n\nList ten.\n");
     expect(listSkills(p.root).map((s) => s.scope)).toContain("project:ideas");
-    expect(projects.readProject(p.root, l).skills.map((s) => s.name)).toEqual(["brainstorm"]);
+    // the project's own skills first, then the global ones (built-in skills included)
+    expect(projects.readProject(p.root, l).skills[0]?.name).toBe("brainstorm");
     expect(() => resolveScope(p.root, "project:nope")).toThrow(/no project/);
   });
 });

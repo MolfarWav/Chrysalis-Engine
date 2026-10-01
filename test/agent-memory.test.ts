@@ -25,6 +25,8 @@ import {
   parseSkill,
   projectContextFor,
   resolveScope,
+  saveSkill,
+  setBuiltinSkillsDir,
 } from "../src/agent/memory.js";
 import { buildUserTools } from "../src/agent/tools.js";
 import { UserAgent } from "../src/agent/agent.js";
@@ -36,11 +38,17 @@ import { invalidatePluginCache } from "../src/plugins/runtime.js";
 
 let dataDir: string;
 let p: UserPaths;
+let builtinDir: string;
 beforeEach(() => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentmem-"));
   p = bootstrapUserDir(dataDir, "mia");
+  // the engine's own skills are a fixture here: an empty folder unless a test fills it
+  builtinDir = path.join(dataDir, "builtin");
+  fs.mkdirSync(builtinDir);
+  setBuiltinSkillsDir(builtinDir);
 });
 afterEach(() => {
+  setBuiltinSkillsDir(null);
   try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* watcher races */ }
   invalidatePluginCache();
 });
@@ -256,3 +264,80 @@ describe("project context", () => {
     expect(seen[1]).not.toContain("Project context");
   }, 30_000);
 });
+
+describe("a skill ecosystem the user grows", () => {
+  const builtin = (name: string, description: string, body: string, files: Record<string, string> = {}) => {
+    fs.mkdirSync(path.join(builtinDir, name), { recursive: true });
+    fs.writeFileSync(path.join(builtinDir, name, "SKILL.md"), `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}\n`);
+    for (const [rel, text] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(builtinDir, name, rel)), { recursive: true });
+      fs.writeFileSync(path.join(builtinDir, name, rel), text);
+    }
+  };
+  const asking = (answer: string, seen: { detail?: string; question?: string; detailKind?: string }[] = []) =>
+    buildMemoryTools("mia", p, { ask: async (q) => { seen.push(q); return answer; } });
+
+  it("built-in skills are listed, loaded with their files, and never written in place", async () => {
+    builtin("plugin-silent-failure", "When a plugin does nothing", "1. Check the manifest.", { "references/table.md": "| a | b |" });
+    const list = listSkills(p.root);
+    expect(list).toEqual([expect.objectContaining({ name: "plugin-silent-failure", scope: "global", builtin: true })]);
+    expect(memoryPromptSection(p.root)).toContain("- plugin-silent-failure [built-in]: When a plugin does nothing");
+    const tools = asking("Save");
+    const loaded = out(await tool(tools, "skill_load").execute("t", { name: "plugin-silent-failure" }, undefined as never));
+    expect(loaded).toContain("1. Check the manifest.");
+    expect(loaded).toContain("references/table.md");
+    expect(out(await tool(tools, "skill_load").execute("t", { name: "plugin-silent-failure", file: "references/table.md" }, undefined as never))).toContain("| a | b |");
+    await expect(tool(tools, "skill_load").execute("t", { name: "plugin-silent-failure", file: "../../../etc/passwd" }, undefined as never)).rejects.toThrow("not a skill file path");
+    // the panel cannot delete it, only replace it
+    expect(() => deleteSkill(p.root, "global", "plugin-silent-failure")).toThrow("built-in");
+    expect(readSkill(p.root, "global", "plugin-silent-failure").builtin).toBe(true);
+  });
+
+  it("skill_edit: exact pieces, shown as a diff; on a built-in skill it saves a copy that the panel resets", async () => {
+    builtin("plugin-silent-failure", "When a plugin does nothing", "1. Check the manifest.\n2. Check the exports.");
+    const seen: { detail?: string; question?: string; detailKind?: string }[] = [];
+    const edit = tool(asking("Save", seen), "skill_edit");
+    await expect(edit.execute("t", { name: "plugin-silent-failure", edits: [{ old: "nope", new: "x" }] }, undefined as never)).rejects.toThrow("not found");
+    await expect(edit.execute("t", { name: "plugin-silent-failure", edits: [{ old: "Check the", new: "x" }] }, undefined as never)).rejects.toThrow("more than once");
+    await edit.execute("t", { name: "plugin-silent-failure", edits: [{ old: "2. Check the exports.", new: "2. Check the exports.\n3. Add a heartbeat." }] }, undefined as never);
+    expect(seen[0]?.question).toContain("Customize the built-in");
+    expect(seen[0]?.detailKind).toBe("diff");
+    expect(seen[0]?.detail).toContain("+3. Add a heartbeat.");
+    expect(read("skills/plugin-silent-failure/SKILL.md")).toContain("3. Add a heartbeat.");
+    expect(listSkills(p.root)).toEqual([expect.objectContaining({ name: "plugin-silent-failure", overrides: true })]);
+    expect(readSkill(p.root, "builtin", "plugin-silent-failure").text).not.toContain("heartbeat");
+
+    // skipped edits write nothing; feedback comes back
+    const skipped = await tool(asking("also mention onTick"), "skill_edit").execute("t", { name: "plugin-silent-failure", edits: [{ old: "1. Check", new: "1. First check" }] }, undefined as never);
+    expect(out(skipped)).toContain("also mention onTick");
+    expect(read("skills/plugin-silent-failure/SKILL.md")).not.toContain("First check");
+
+    // reset: deleting the copy brings the built-in version back
+    deleteSkill(p.root, "global", "plugin-silent-failure");
+    expect(listSkills(p.root)).toEqual([expect.objectContaining({ name: "plugin-silent-failure", builtin: true })]);
+  });
+
+  it("skill_propose carries extra files, refuses unsafe paths, and shows an update as a diff", async () => {
+    const seen: { detail?: string; detailKind?: string }[] = [];
+    const propose = tool(asking("Save", seen), "skill_propose");
+    const base = { name: "edit-card", description: "When editing a big character card", body: "1. Run scripts/edit.py." };
+    await expect(propose.execute("t", { ...base, files: [{ path: "../../persona.md", content: "x" }] }, undefined as never)).rejects.toThrow("not allowed");
+    await expect(propose.execute("t", { ...base, files: [{ path: "bin/tool.exe", content: "x" }] }, undefined as never)).rejects.toThrow("not allowed");
+    await propose.execute("t", { ...base, files: [{ path: "scripts/edit.py", content: "print('ok')" }] }, undefined as never);
+    expect(read("skills/edit-card/scripts/edit.py")).toBe("print('ok')");
+    expect(seen[0]?.detailKind).toBeUndefined();
+    await propose.execute("t", { ...base, body: "1. Run scripts/edit.py.\n2. Check the JSON parses." }, undefined as never);
+    expect(seen[1]?.detailKind).toBe("diff");
+    expect(seen[1]?.detail).toContain("+2. Check the JSON parses.");
+    // an update keeps the files it does not mention
+    expect(read("skills/edit-card/scripts/edit.py")).toBe("print('ok')");
+  });
+
+  it("the user writes skills from the panel with the same checks", () => {
+    expect(saveSkill(p.root, "global", "my-style", "When writing replies in my style", "Short sentences.")).toBe("skills/my-style/SKILL.md");
+    expect(parseSkill(read("skills/my-style/SKILL.md"))?.body).toBe("Short sentences.");
+    expect(() => saveSkill(p.root, "global", "My Style", "x", "y")).toThrow("invalid skill name");
+    expect(() => saveSkill(p.root, "global", "my-style", "x", "  ")).toThrow("empty");
+  });
+});
+

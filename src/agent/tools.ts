@@ -50,6 +50,7 @@ export const WRITE_TOOLS = new Set([
   "bash",
   "memory_propose",
   "skill_propose",
+  "skill_edit",
 ]);
 
 const MAX_READ_BYTES = 256 * 1024;
@@ -108,6 +109,8 @@ export interface AskRequest {
   multiSelect?: boolean;
   questions?: AskQuestion[];
   detail?: string;
+  /** "diff": detail is a unified diff (the card colors its lines). */
+  detailKind?: "diff";
 }
 
 const ASK_OPTION = Type.Object({

@@ -622,6 +622,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
                 ...(q.multiSelect ? { multiSelect: true } : {}),
                 ...(q.questions?.length ? { questions: q.questions } : {}),
                 ...(q.detail ? { detail: q.detail } : {}),
+                ...(q.detail && q.detailKind ? { detailKind: q.detailKind } : {}),
               },
             });
             setTimeout(() => {
@@ -2614,12 +2615,32 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     }
   });
 
+  // ?file=<folder/name.ext> reads one of the skill's extra files; scope
+  // "builtin" reads the engine's version even when a workspace copy replaces it
   app.get("/v1/agent/skills/:scope/:name", (c) => {
     const root = userPaths(dataDir, c.get("user").username).root;
+    const file = c.req.query("file");
     try {
+      if (file) return c.json({ file, text: agentMemory.readSkillFileFor(root, c.req.param("scope"), c.req.param("name"), file) });
       return c.json(agentMemory.readSkill(root, c.req.param("scope"), c.req.param("name")));
     } catch (e) {
       return c.json({ error: (e as Error).message }, 404);
+    }
+  });
+
+  // the user creating or editing a skill: their own file, so no card
+  app.put("/v1/agent/skills/:scope/:name", async (c) => {
+    const u = c.get("user");
+    const root = userPaths(dataDir, u.username).root;
+    const body = await c.req.json<{ description?: unknown; body?: unknown }>().catch(() => ({}) as { description?: unknown; body?: unknown });
+    if (typeof body.description !== "string" || typeof body.body !== "string") return c.json({ error: "description and body (strings) required" }, 400);
+    try {
+      const file = agentMemory.saveSkill(root, c.req.param("scope"), c.req.param("name"), body.description, body.body);
+      await git.commitAll(root, u.username, `skill: save ${file}`).catch(() => undefined);
+      evictAgents(u.username); // the skills index rides the system prompt
+      return c.json({ ok: true, file });
+    } catch (e) {
+      return memoryError(c, e);
     }
   });
 
@@ -2629,6 +2650,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     try {
       const file = agentMemory.deleteSkill(root, c.req.param("scope"), c.req.param("name"));
       await git.commitAll(root, u.username, `skill: delete ${file}`).catch(() => undefined);
+      evictAgents(u.username);
       return c.json({ ok: true });
     } catch (e) {
       return memoryError(c, e);

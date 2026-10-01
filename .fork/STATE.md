@@ -14,10 +14,9 @@
 - Upstream staging merged in (2026-09-30): @ mentions, user commands (commands/, overlaps our skills — reconcile later), CLI.
 - Upstream PR prepared: branch `claude/upstream-context-fixes` (context fixes + onTick docs only, on their staging).
   The user opens it from the prefilled link; body in `.fork/upstream-pr-body.md`.
-- First agent skills (2026-09-30): `.fork/skills/plugin-silent-failure`, `.fork/skills/cyrillic-text-matching` (UA+RU; code tested in QuickJS-ng).
-  Install by copying each folder into the workspace `skills/` (from source: `data/users/<name>/skills/`). Seeding them from the engine: later.
+- First agent skills (2026-09-30): `plugin-silent-failure`, `cyrillic-text-matching` (UA+RU; code tested in QuickJS-ng). Since 2026-10-01 they live in `builtin-skills/` (see below).
   The agent can also add skills itself through `skill_propose`, confirmed by the user.
-- More agent skills (2026-09-30): `.fork/skills/two-phase-llm` (route/hook/tool templates tested on the real plugin runtime), `.fork/skills/finish-change`; app skill `.fork/app-skills/roleplay/edit-large-card` (install into `apps/roleplay/.skills/`; edit script tested on minified, pretty and \u-escaped cards).
+- More agent skills (2026-09-30): `two-phase-llm` (route/hook/tool templates tested on the real plugin runtime), `finish-change` (both now in `builtin-skills/`); app skill `.fork/app-skills/roleplay/edit-large-card` (install into `apps/roleplay/.skills/`; edit script tested on minified, pretty and \u-escaped cards).
 - Model pickers (2026-09-30, `7916cba`): Settings > Models (grouped by connection, search, All/None). `models-shown.json` in the workspace; `GET /v1/models` serves only chosen models (all when none chosen), `?all=1` the full list. Agent picker: groups, stars, "show N more hidden" on search. With no model set, the engine runs the first shown model.
 - Agent workspace (`fe04ba7`): each run records `spend` (all model calls summed, priced on the session model); composer shows chat total. Skills appear in the `/` menu. Session search, rename, edit and regenerate already existed.
 - Workflow split: engine code (this repo, GitHub) is Claude Code's; the workspace (`data/users/<name>/`: apps, plugins, skills, memory) is the built-in agent's, in its own local git. `/data/` is ignored here, so the two never collide. The workspace has no backup off the user's disk (no remote).
@@ -50,5 +49,7 @@
   - 3.2 memory: topic files + index (short MEMORY.md always in the prompt, `memory/<topic>.md` listed by name + first line) AND a `memory_search` tool. Not consolidation, not inline tags.
   - 3.4 "src" means `apps/<id>/src/` (protected paths: confirm in an ask card). Default instructions: ONE text, "Restore default" replaces it all (old text stays in git history).
   - 3.5 the user does not remember what broke; Restore puts back code only (`apps/<id>/` without `data/`).
-- Next: 3.5 checkpoints, 3.4 default instructions + protected paths, 3.7 prompt inspector, 3.2 memory.
+- Next: 3.4 default instructions + protected paths, 3.7 prompt inspector, 3.2 memory.
+- Skill ecosystem (2026-10-01, engine `0ae14b9`): `builtin-skills/` ships with the engine (packaged by `scripts/dist.ts`), listed as [built-in]; a global workspace skill of the same name replaces it, deleting the copy resets it. Tools: `skill_propose` (+ extra files references/, scripts/; update shown as a diff), new `skill_edit` (exact old→new, diff card), `skill_load {file}`. User writes skills from the panel (`PUT /v1/agent/skills/:scope/:name`). New built-in skill `skill-authoring`. Every agent change still needs the user's Save. `.fork/app-skills/roleplay/edit-large-card` stays fork-only (app-scoped).
+- Checkpoints 3.5 (2026-10-01, engine `2d4e172`): `src/agent/checkpoints.ts`, `agent/checkpoints.json` (outside git). Auto before a run's first write to an app; agent tool `checkpoint` (create/list/restore, restore confirmed); routes `/v1/projects/:pid/checkpoints…`. Restore = code only. UI (project page list, Undo after a run) in progress.
 

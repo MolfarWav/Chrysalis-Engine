@@ -118,7 +118,7 @@ export function discoverPlugins(pluginsDir: string): LoadedPlugin[] {
   let key = "";
   try {
     key = fs.statSync(pluginsDir).mtimeMs.toString();
-    for (const id of fs.readdirSync(pluginsDir)) {
+    for (const id of fs.readdirSync(pluginsDir).sort()) {
       try {
         // manifest mtime matters too — permissions/networkHosts edits must be
       // picked up, not just plugin.js changes
@@ -134,7 +134,9 @@ export function discoverPlugins(pluginsDir: string): LoadedPlugin[] {
   if (cached && cached.key === key) return cached.plugins;
 
   const plugins: LoadedPlugin[] = [];
-  for (const id of fs.readdirSync(pluginsDir)) {
+  // sorted: readdir order differs between file systems (NTFS sorts, ext4 does
+  // not), and the first plugin to answer a route wins
+  for (const id of fs.readdirSync(pluginsDir).sort()) {
     const dir = path.join(pluginsDir, id);
     try {
       const manifest = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")) as PluginManifest;

@@ -3,10 +3,11 @@
 Fork of Chrysalis Engine; repo MolfarWav/Molfar.Vertep. Current as of 2026-10-02.
 The full log of everything before this date, with commit hashes, is `.fork/archive/STATE-until-2026-10-02.md`; finished handoffs are in `.fork/archive/`. Standing rules are in `CLAUDE.md`.
 
-## Active handoffs (read the one for your task)
+## Active handoffs (queue and order: `.fork/handoff/START.md`)
 1. `.fork/handoff/workflow-release/HANDOFF.md`: release process (`.fork/RELEASE.md`), default prompts (language line, tests, convention), one universal launcher in the repo root. Do first.
 2. `.fork/handoff/agent-instructions/HANDOFF.md`: rewrite the default agent instructions (persona.md), state the precedence, make the default follow engine updates. Do together with the default-prompts part of item 1.
 3. `.fork/handoff/agent-tools/HANDOFF.md`: five agent tools (plugin_log, app_request, json_get/json_set, web_fetch, model_try). Not tied to a release number.
+4. QUEUED, not started: `.fork/handoff/ui-pr1-shell/BRIEF.md`, Hermes' UI redesign brief (own release). Read its status header: parts of it are outdated.
 - Pending, not a handoff: upstream PR body `.fork/upstream-pr-body.md` (branch `claude/upstream-context-fixes`, context fixes only). Open it only after testing on real models. Keep `.fork/` out of it.
 - Fork-only app skill `.fork/app-skills/roleplay/edit-large-card` (install into `apps/roleplay/.skills/`). `json_set` (item 3) would replace it.
 
@@ -47,7 +48,7 @@ The full log of everything before this date, with commit hashes, is `.fork/archi
 - Launchers: `.fork/start-chrysalis.bat` (desktop) and `.fork/Chrysalis.bat` (laptop, `D:\ROLEPlay\Chrysalis.bat` is a copy; follows the newest `claude/*` branch). Both are to be replaced by the root launcher (handoff 1). An untracked `start-chrysalis.bat` in the repo root is an old copy.
 
 ## Closed with the user: do not reopen
-- UI redesign is done outside this repo (Hermes Agent, Sonnet, mostly on the Roleplay app); do not start UI redesign here unless asked.
+- UI redesign: designed by Hermes; the brief is queued (handoff 4), do not start it before the user says so.
 - Release 0.1.0 title on GitHub reads "Molfar.Vertep 0.1.0"; update checks read `tag_name`.
 - Delegation rule (Opus/Fable orchestrate, other models execute) is in `CLAUDE.md` and `~/.claude/CLAUDE.md`. `ask-model` is on the desktop only; `adaptive-agent` is a Claude Code skill pair, not for Hermes.
 - Launcher: one `.bat`, source mode, update channel = latest release tag, `dev` = newest `claude/*`. Versions: significant = minor, patch = patch.

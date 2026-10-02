@@ -60,6 +60,7 @@ import { log } from "../logger.js";
 import type { EventBus } from "./ws.js";
 import { ensureLookWatcher, stopLookWatcher } from "./look-watch.js";
 import { assertPublicHost } from "../net-guard.js";
+import { listShellThemes } from "../themes.js";
 import { installApp, hasPackages, packagesBusy } from "../apps/packages.js";
 import { appFsOps, checkOutput, leaseHolder, MAX_BATCH_OPS, readBuildStatus, readDevMeta, sourceRev, takeLease, writeClientErrors, writeClientLogs, writeOutput } from "../builder/server.js";
 import { builderAsset, builderFrameCsp, builderVersion } from "../builder/assets.js";
@@ -1111,6 +1112,10 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
       hasAvatar: !!users.avatarPath(u.username),
     });
   });
+
+  // the workspace's own shell themes (themes/*.json); refused files come back
+  // with the reason so the agent can fix what it wrote
+  app.get("/v1/themes", (c) => c.json(listShellThemes(c.get("paths").themes)));
 
   // change the logged-in user's own password (current one required; there is
   // no passwordless state to go back to, so removal isn't a thing)

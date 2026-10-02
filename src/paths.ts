@@ -23,6 +23,8 @@ export interface UserPaths {
   plugins: string;
   assetsStore: string;
   store: string;
+  /** Shell colour themes, one JSON file each (`src/themes.ts`). */
+  themes: string;
   gitDir: string;
 }
 
@@ -168,6 +170,7 @@ export function userPaths(dataDir: string, username: string): UserPaths {
     plugins: path.join(root, "plugins"),
     assetsStore: path.join(root, "assets-store"),
     store: path.join(root, "store"),
+    themes: path.join(root, "themes"),
     gitDir: path.join(root, ".git"),
   };
 }

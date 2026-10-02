@@ -890,7 +890,7 @@ describe("A2 the bridge's second lock (server side)", () => {
     for (const [method, url] of [
       ["GET", "/v1/apps/evil/%74ree"], ["GET", "/v1/apps/evil/tree"], ["POST", "/v1/apps/evil/%70lugins/import"],
       ["POST", "/v1/apps/evil/%69nstall"], ["POST", "/v1/apps/roleplay/chats"], ["GET", "/v1/agent/sessions"],
-      ["POST", "/v1/shell"], ["PUT", "/v1/mcp/x"], ["GET", "/v1/settings/persona"], ["GET", "/v1/settings/agents-md"], ["POST", "/v1/settings/agents-md/restore"], ["PUT", "/v1/settings/agent-protection"], ["GET", "/v1/inspector"],
+      ["POST", "/v1/shell"], ["PUT", "/v1/mcp/x"], ["GET", "/v1/settings/persona"], ["GET", "/v1/settings/agents-md"], ["POST", "/v1/settings/agents-md/restore"], ["PUT", "/v1/settings/agent-protection"], ["GET", "/v1/inspector"], ["GET", "/v1/themes"],
       // an app that CLAIMS official in its own manifest is still imported to the engine
       ["PATCH", "/v1/apps/evil/mcp/web-search"], ["PUT", "/v1/models/pricing"],
     ] as const) {
@@ -917,7 +917,7 @@ describe("A2 the bridge's second lock (server side)", () => {
     const paths = ["/v1/apps/x/chats", "/v1/apps/x/tree", "/v1/apps/x/mcp", "/v1/apps/x/mcp/s", "/v1/apps/y/chats", "/v1/models", "/v1/models/context", "/v1/models/shown",
       "/v1/models/pricing", "/v1/images", "/v1/images/models", "/v1/assets", "/v1/assets/abc", "/v1/audio/speech", "/v1/audio/speech/endpoints",
       "/v1/audio/speech/endpoints/e", "/v1/settings/connections", "/v1/settings/providers", "/v1/settings", "/v1/plugins", "/v1/plugins/p/approve",
-      "/v1/embeddings/config", "/v1/embeddings/probe", "/v1/agent", "/v1/mcp", "/v1/shell", "/v1/apps", "/v1/apps/x/dev", "/v1/apps/x/build", "/v1/apps/x/build/fs", "/v1/apps/x/export",
+      "/v1/embeddings/config", "/v1/embeddings/probe", "/v1/agent", "/v1/mcp", "/v1/shell", "/v1/themes", "/v1/apps", "/v1/apps/x/dev", "/v1/apps/x/build", "/v1/apps/x/build/fs", "/v1/apps/x/export",
       "/v1/apps/x/export/backup", "/v1/apps/x/exports", "/v1/apps/x/tree/leaf", "/v1/projects", "/v1/projects/import", "/v1/projects/app:x",
       "/v1/projects/project:x/export", "/v1/projects/app:x/files", "/v1/projects/app:x/files/a.png",
       "/v1/profile/export", "/v1/profile/import", "/v1/profile/import/t/confirm"];

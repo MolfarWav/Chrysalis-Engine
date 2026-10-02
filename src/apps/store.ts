@@ -17,7 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { isValidGitRef, isValidGitUrl } from "./git.js";
 import { listApps, readApp } from "./manager.js";
-import { readBaseline, readInstallSource, writeInstallSource } from "./update.js";
+import { readBaseline, readInstallSource, writeBaseline, writeInstallSource } from "./update.js";
 
 /** Repository owners whose apps are official: the Chrysalis maintainers and
  *  Molfar Vertep's own. */
@@ -39,31 +39,62 @@ export function forkOf(gitUrl: string): string | null {
   return null;
 }
 
+/** A manifest's text with its source moved from one repository to another,
+ *  or null when it does not come from `from`. */
+function restampedManifest(text: string, from: string, to: string): string | null {
+  try {
+    const raw = JSON.parse(text) as { source?: { git?: unknown } };
+    if (typeof raw.source?.git !== "string" || normalizeGitUrl(raw.source.git) !== normalizeGitUrl(from)) return null;
+    raw.source = { ...raw.source, git: to };
+    return JSON.stringify(raw, null, 2) + "\n";
+  } catch {
+    return null;
+  }
+}
+
 /** Point installs of a forked app at the fork: the recorded install source,
  *  the manifest's source and its bundled plugins' sources (which would
- *  otherwise list as updating from upstream on their own). Code and data stay
- *  as they are; the next update merges the fork in. Returns the ids moved. */
+ *  otherwise list as updating from upstream on their own). The baseline's
+ *  plugin manifests get the same change: an update merges against them, and a
+ *  source that changed only on the workspace side would read as an edit and
+ *  conflict with the update's own stamp. Code and data stay as they are; the
+ *  next update merges the fork in. Returns the ids moved. */
 export function adoptForkedApps(p: { apps: string; appUpstream: string }): { id: string; repository: string }[] {
   const moved: { id: string; repository: string }[] = [];
-  const restamp = (file: string, from: string, to: string): void => {
+  const restampFile = (file: string, from: string, to: string): void => {
     try {
-      const raw = JSON.parse(fs.readFileSync(file, "utf8")) as { source?: { git?: unknown } };
-      if (typeof raw.source?.git !== "string" || normalizeGitUrl(raw.source.git) !== normalizeGitUrl(from)) return;
-      raw.source = { ...raw.source, git: to };
-      fs.writeFileSync(file, JSON.stringify(raw, null, 2) + "\n", "utf8");
-    } catch { /* not a manifest */ }
+      const next = restampedManifest(fs.readFileSync(file, "utf8"), from, to);
+      if (next !== null) fs.writeFileSync(file, next, "utf8");
+    } catch { /* no such file */ }
   };
+  const isPluginManifest = (rel: string): boolean => /^plugins\/[^/]+\/manifest\.json$/.test(rel);
   for (const info of listApps(p.apps)) {
     const recorded = readInstallSource(p.appUpstream, info.id);
-    const from = recorded?.git ?? info.manifest.source?.git;
-    const fork = from ? forkOf(from) : null;
-    if (!from || !fork) continue;
-    writeInstallSource(p.appUpstream, info.id, { ...(recorded ?? { ref: info.manifest.source?.ref ?? "HEAD" }), git: fork });
-    restamp(path.join(info.dir, "manifest.json"), from, fork);
-    let plugins: string[] = [];
-    try { plugins = fs.readdirSync(path.join(info.dir, "plugins")); } catch { /* no plugins */ }
-    for (const pid of plugins) restamp(path.join(info.dir, "plugins", pid, "manifest.json"), from, fork);
-    moved.push({ id: info.id, repository: fork });
+    const current = recorded?.git ?? info.manifest.source?.git;
+    if (!current) continue;
+    const fork = forkOf(current);
+    if (fork) {
+      writeInstallSource(p.appUpstream, info.id, { ...(recorded ?? { ref: info.manifest.source?.ref ?? "HEAD" }), git: fork });
+      restampFile(path.join(info.dir, "manifest.json"), current, fork);
+      let plugins: string[] = [];
+      try { plugins = fs.readdirSync(path.join(info.dir, "plugins")); } catch { /* no plugins */ }
+      for (const pid of plugins) restampFile(path.join(info.dir, "plugins", pid, "manifest.json"), current, fork);
+      moved.push({ id: info.id, repository: fork });
+    }
+    // also heals an install moved before the baseline was restamped
+    const target = fork ?? current;
+    const upstream = Object.entries(FORKED_APPS).find(([, f]) => normalizeGitUrl(f) === normalizeGitUrl(target))?.[0];
+    const baseline = upstream ? readBaseline(p.appUpstream, info.id) : null;
+    if (!upstream || !baseline) continue;
+    let touched = false;
+    for (const [rel, body] of baseline.files) {
+      if (!isPluginManifest(rel)) continue;
+      const next = restampedManifest(body.toString("utf8"), upstream, target);
+      if (next === null) continue;
+      baseline.files.set(rel, Buffer.from(next, "utf8"));
+      touched = true;
+    }
+    if (touched) writeBaseline(p.appUpstream, info.id, baseline.version, baseline.files);
   }
   return moved;
 }

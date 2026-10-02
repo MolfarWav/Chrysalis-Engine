@@ -20,7 +20,7 @@ import { defaultInstanceConfig } from "../src/config.js";
 import { bootstrapUserDir, userPaths } from "../src/paths.js";
 import { invalidatePluginCache } from "../src/plugins/runtime.js";
 import { adoptForkedApps, adoptFormerlyShipped, createCatalog, forkOf, isOfficialSource, parseCatalog } from "../src/apps/store.js";
-import { readInstallSource, readCodeTree, writeBaseline, writeInstallSource } from "../src/apps/update.js";
+import { readBaseline, readInstallSource, readCodeTree, writeBaseline, writeInstallSource } from "../src/apps/update.js";
 
 const entry = (over: Record<string, unknown> = {}) => ({
   id: "roleplay",
@@ -545,6 +545,31 @@ describe("installing from the store", () => {
     expect(read("roleplay", "plugins", "engine", "manifest.json").source.git).toBe(fork);
     expect(read("roleplay", "plugins", "mine", "manifest.json").source.git).toBe("https://github.com/someone/mine");
     expect(read("community", "manifest.json").source.git).toBe("https://github.com/someone/community");
+  });
+
+  it("restamps the baseline's plugin sources too, so the update does not read them as your edits", () => {
+    const p = userPaths(dataDir, "alice");
+    const upstream = "https://github.com/ProjectChrysalis/Roleplay-Chrysalis";
+    const fork = "https://github.com/MolfarWav/Molfar.Vertep-Roleplay";
+    const stamped = (git: string) => Buffer.from(JSON.stringify({ name: "Engine", permissions: [], origin: "imported", source: { git, head: "abc" } }, null, 2) + "\n");
+    const make = (id: string, recorded: string) => {
+      const dir = path.join(p.apps, id);
+      fs.mkdirSync(path.join(dir, "plugins", "engine"), { recursive: true });
+      fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ name: id, version: "4.18.2", kind: "app" }));
+      // an install the engine already moved has the fork in its workspace copy
+      fs.writeFileSync(path.join(dir, "plugins", "engine", "manifest.json"), stamped(recorded));
+      writeInstallSource(p.appUpstream, id, { git: recorded, ref: "HEAD" });
+      writeBaseline(p.appUpstream, id, "4.18.2", new Map([["plugins/engine/manifest.json", stamped(upstream)], ["src/main.tsx", Buffer.from("x")]]));
+    };
+    make("fresh", upstream);
+    make("moved-earlier", fork);
+    adoptForkedApps(p);
+    for (const id of ["fresh", "moved-earlier"]) {
+      const base = readBaseline(p.appUpstream, id)!;
+      expect(base.version).toBe("4.18.2");
+      expect(base.files.get("plugins/engine/manifest.json")!.equals(fs.readFileSync(path.join(p.apps, id, "plugins", "engine", "manifest.json"))), id).toBe(true);
+      expect(base.files.get("src/main.tsx")!.toString()).toBe("x");
+    }
   });
 
   it("a plugin that replaces a sibling runs alone, and the old one is listed as off", async () => {

@@ -7,6 +7,12 @@
 > - The mock and SVG assets live on the user's machine (`E:/Hermes/profiles/silvi/outputs/vertep/`), not in the repo; a cloud session cannot see them.
 > - The engine top bar (PR 1b, `client/`) is the part of this brief that belongs to this repo directly; it needs a `uk` locale and the 13-locale rules in `CLAUDE.md`. The earlier "UI redesign is dropped here" decision is lifted for this brief only.
 > - Use the delegation rule: the UI build goes to a cheaper model with a precise spec; review its diff and screenshots.
+> Later on 2026-10-02 (releases 0.3.0-0.4.0), more of this brief changed:
+> - DONE: the Store reads Molfar Vertep's own catalog (`MolfarWav/Molfar.Vertep-Store`), so the PR 1c step 2 concern is settled; official = MolfarWav only.
+> - DONE: the `uk` shell locale exists (14 locales); new strings go into all 14 files.
+> - CHANGED: the agent tab is **Molfar** (uk/ru Мольфар) with an avatar (`client/public/molfar-128.webp`, `-512.webp`, `MolfarAvatar` in `client/src/App.tsx`); the brief's "Agent / Roleplay" tabs mean "Molfar / Roleplay" now. The top bar also has the Updates button (`client/src/updates-panel.tsx`), and the logo opens the start screen.
+> - The engine no longer follows upstream: no merge-friendliness constraints on `client/` any more.
+> - Ask the user what of this brief is still wanted before building; work in a git worktree (START.md, "How to work here").
 
 ---
 

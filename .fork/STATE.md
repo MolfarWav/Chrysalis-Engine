@@ -1,93 +1,53 @@
 # Molfar Vertep: project state
 
-**Molfar Vertep, fork of Chrysalis Engine; repo MolfarWav/Molfar.Vertep (renamed from Chrysalis-Engine-Molfar on 2026-10-01).**
+Fork of Chrysalis Engine; repo MolfarWav/Molfar.Vertep. Current as of 2026-10-02.
+The full log of everything before this date, with commit hashes, is `.fork/archive/STATE-until-2026-10-02.md`; finished handoffs are in `.fork/archive/`. Standing rules are in `CLAUDE.md`.
 
-- Branch: `main` carries the current state; each Claude session works on its own `claude/*` branch.
-- Phase 1 (agent context stability): done. Commits `dd840e8`, `ffa018a`.
-  Modules: `src/agent/context-budget.ts`, `src/agent/compact.ts`.
-  Tested on MiniMax M2.5; the log is clean.
-- Phase 1 follow-ups: no false overflow on bodiless errors; compaction runs on the session's own model (`9068736`). `onTick(ctx, host)` documented (`5dacf5b`).
-- Phases 2-3 (agent memory + skills + panel on the agent page): done. Module `src/agent/memory.ts`,
-  panel `client-agent/src/MemoryPanel.tsx`, tests `test/agent-memory.test.ts`.
-  Decisions: project memory attached automatically; memory/skills written only via confirmed cards;
-  skills both global and per app.
-- Upstream staging merged in (2026-09-30): @ mentions, user commands (commands/, overlaps our skills — reconcile later), CLI.
-- Upstream PR prepared: branch `claude/upstream-context-fixes` (context fixes + onTick docs only, on their staging).
-  The user opens it from the prefilled link; body in `.fork/upstream-pr-body.md`.
-- First agent skills (2026-09-30): `plugin-silent-failure`, `cyrillic-text-matching` (UA+RU; code tested in QuickJS-ng). Since 2026-10-01 they live in `builtin-skills/` (see below).
-  The agent can also add skills itself through `skill_propose`, confirmed by the user.
-- More agent skills (2026-09-30): `two-phase-llm` (route/hook/tool templates tested on the real plugin runtime), `finish-change` (both now in `builtin-skills/`); app skill `.fork/app-skills/roleplay/edit-large-card` (install into `apps/roleplay/.skills/`; edit script tested on minified, pretty and \u-escaped cards).
-- Model pickers (2026-09-30, `7916cba`): Settings > Models (grouped by connection, search, All/None). `models-shown.json` in the workspace; `GET /v1/models` serves only chosen models (all when none chosen), `?all=1` the full list. Agent picker: groups, stars, "show N more hidden" on search. With no model set, the engine runs the first shown model.
-- Agent workspace (`fe04ba7`): each run records `spend` (all model calls summed, priced on the session model); composer shows chat total. Skills appear in the `/` menu. Session search, rename, edit and regenerate already existed.
-- Workflow split: engine code (this repo, GitHub) is Claude Code's; the workspace (`data/users/<name>/`: apps, plugins, skills, memory) is the built-in agent's, in its own local git. `/data/` is ignored here, so the two never collide. The workspace has no backup off the user's disk (no remote).
-- Branch `claude/hopeful-brown-vb53w4` continues `claude/brave-heisenberg-4l4wdh`.
-- Launcher `.fork/Chrysalis.bat` (2026-09-30), kept outside the app folder, app at `D:\ROLEPlay\Chrysalis-Engine` (the laptop): installs Git and Bun, clones, updates to the NEWEST `origin/claude/*` branch (not `claude/upstream-*`) or the one named, rebuilds only on change, starts. So a session only has to push; no branch command for the user. The old `start-chrysalis.bat` (`C:\Users\sulaz\Chrysalis-Engine`, desktop) still works with `update <branch>`.
-- Full profile backup (2026-09-30): engine `30fd328` (`src/profile-backup.ts`, `/v1/profile/*`, tests `test/profile-backup.test.ts`), UI Settings > Backup (all 13 locales). Separate from an app's own backup (chats, characters, presets only). Keys and mcp.json only encrypted under a password (scrypt + AES-GCM); import is two-step and REPLACES the profile, zipping the current one to `data/backups/` first. From a file: only .git history (no config/hooks), no MCP approvals, install records marked restored. Cap 512 MB. Not tested on Windows: the workspace folder swap may fail on locked files (then nothing changes).
-- Projects on the agent page (2026-09-30): done. Engine `3512725`, `8dbe6f4`; UI `00d11f1`. Spec: `.fork/handoff/projects/HANDOFF.md`.
-  Engine: `src/agent/projects.ts`, routes `/v1/projects…` (shell-only), tests `test/projects.test.ts`. Apps are projects (`app:<id>`, settings and uploads in `apps/<id>/.project/`); free projects in `projects/<name>/`.
-  Uploads: images + text, 10 MB, spaces become dashes; never in git (`PROJECT_FILES` in `gitBoundaryIgnored` and the agent write denylist). App uploads ride the app backup zip; updates skip `.project/`; free projects export/import as zip.
-  Chat: start record carries `project`; prompt gets a Project section (file LIST only). Model: chat pick > project default > user default. Picks inside a project chat stay per chat (`agent-ui-session-models`).
-  UI: `Sidebar.tsx`, `ProjectPage.tsx`, `ProjectChat.tsx`; reasoning is its own select beside the model picker. Checked in Chromium (dark, light, 390 px).
-  Not done: the workspace AGENTS.md does not mention projects/ (the agent's system prompt does; bumping AGENTS.md would overwrite the user's copy). Project import is capped by the engine's 128 MB body limit.
-- Workspace AGENTS.md: the user's copy carries marker v10 with no digest; engine v12 overwrites it on boot and drops the user's line about docs/ARCHITECTURE.md.
-- Next (not engine, in the user's Roleplay workspace):
-  1. Archivarius: `onTick(_ctx, host)` fix, then verify vault-chats appears.
-  2. Roleplay `recallMemories` (location unknown; find it by grep), use skill cyrillic-text-matching: Ukrainian stop words, stem-prefix matching, typographic apostrophe (’).
-- Engine issues seen, not fixed: hot update keeps a deleted import until a full rebuild;
-  the agent's emulated git stumbles on staging deletions (`src/agent/git-cli.ts`).
-- Upstream PR: only after testing on real models. Keep this `.fork/` folder out of it.
-- The user tests on free OpenRouter models.
-- The user will ask for an export of this state for their local app.
-- Next task, handed off (2026-10-01): eight items (move chats between projects, scalable memory, the two workspace debts, default instructions + protected paths, checkpoints, better ask_user, prompt inspector, finishing projects). Spec, verified code refs and open questions: `.fork/handoff/next/HANDOFF.md`.
-- Branch `claude/fervent-thompson-tej67n` continues `claude/hopeful-brown-vb53w4` (2026-10-01).
-- Done from the handoff (2026-10-01):
-  - 3.1 Move chats: `{type:"project"}` record, last wins over the start record (`moveSession`, `sessionProject` in `agent.ts`); `POST /v1/agent/sessions/:id/project`; truncate/fork keep it. UI: chat menu "Move to project" + drag onto a project row.
-  - 3.8 Save a reply to project files (action on assistant messages in project chats). Workspace AGENTS.md v13 mentions `projects/` and the single `git` tool (old git_status/git_commit names were stale). Edited copies keep their text (digest).
-  - 3.6 ask_user: options as strings or `{label, description, recommended}`, `multiSelect`, `questions` (several per card). `prepareArguments` normalizes loose shapes from free models. Prompt rule: ask 2-6 questions before building an app/UI/large feature. Checked end to end with a mock OpenAI server in Chromium.
-  - 3.3 Prompt for the built-in agent (Archivarius onTick, recallMemories): `.fork/handoff/next/workspace-agent-task.md`. Not run yet: the user pastes it.
-- User decisions for the rest (2026-10-01):
-  - 3.2 memory: topic files + index (short MEMORY.md always in the prompt, `memory/<topic>.md` listed by name + first line) AND a `memory_search` tool. Not consolidation, not inline tags.
-  - 3.4 "src" means `apps/<id>/src/` (protected paths: confirm in an ask card). Default instructions: ONE text, "Restore default" replaces it all (old text stays in git history).
-  - 3.5 the user does not remember what broke; Restore puts back code only (`apps/<id>/` without `data/`).
-- Next (handed off 2026-10-01): small-window mode, memory 3.2, tails, 3.3 verification. Spec with measured prompt sizes and verified code refs: `.fork/handoff/small-windows-memory/HANDOFF.md`.
-- Skill ecosystem (2026-10-01, engine `0ae14b9`): `builtin-skills/` ships with the engine (packaged by `scripts/dist.ts`), listed as [built-in]; a global workspace skill of the same name replaces it, deleting the copy resets it. Tools: `skill_propose` (+ extra files references/, scripts/; update shown as a diff), new `skill_edit` (exact old→new, diff card), `skill_load {file}`. User writes skills from the panel (`PUT /v1/agent/skills/:scope/:name`). New built-in skill `skill-authoring`. Every agent change still needs the user's Save. `.fork/app-skills/roleplay/edit-large-card` stays fork-only (app-scoped).
-- Checkpoints 3.5 (2026-10-01, engine `2d4e172`): `src/agent/checkpoints.ts`, `agent/checkpoints.json` (outside git). Auto before a run's first write to an app; agent tool `checkpoint` (create/list/restore, restore confirmed); routes `/v1/projects/:pid/checkpoints…`. Restore = code only. UI: Checkpoints card on the app's project page, "Changed <app> · N files · Undo" under a run, banner with Undo. Checked in Chromium (no live model run).
-- Protected paths + default instructions 3.4 (2026-10-01, engine `f2955e7`): `src/agent/protect.ts`. Default `apps/*/src/**`, `apps/*/index.html`; `persona.md` always. File tools ask (diff card, "Allow" = that app for the rest of the request); bash asks when a writing command names a protected file; sandbox write-back and git restore/revert refuse unallowed writes. List in settings.json `agentProtectedPaths` (`/v1/settings/agent-protection`). `DEFAULT_PERSONA` in paths.ts seeds a missing persona.md and is served as `default` by GET /v1/settings/persona. package.json is NOT protected (deps go through app_deps). Settings > Agent: "Restore default instructions" and a "Protected files" list (13 locales).
-- Prompt inspector 3.7 (2026-10-01, engine `cbb62c7`): `src/inspector.ts`, last 20 requests per user in memory (agent via streamFn + result(), apps/API via generate() + AsyncLocalStorage). Messages with token estimates, tools size, output, usage, error; no keys/headers. Routes `/v1/inspector` (shell-only). UI: "Prompt inspector" button beside Memory on the agent page (list, context bar, per-message tokens).
-- 3.3 (2026-10-01): NEEDS VERIFICATION. The built-in agent reported both workspace fixes done (Archivarius onTick, recallMemories matching). Not verified from here; the user was given checks (vault-chats fresh, no _debug left, inspector shows app:roleplay calls, inflected names recall).
-- Session tooling (2026-10-01): `CLAUDE.md` (standing rules, read automatically) and repo skill `.claude/skills/browser-check/` (start.sh/stop.sh, mock OpenAI model with scripted turns, pw.mjs helpers; tested end to end). `.gitignore` now ignores `/.claude/*` except `skills/`.
+## Active handoffs (read the one for your task)
+1. `.fork/handoff/workflow-release/HANDOFF.md`: release process (`.fork/RELEASE.md`), default prompts (language line, tests, convention), one universal launcher in the repo root. Do first.
+2. `.fork/handoff/agent-instructions/HANDOFF.md`: rewrite the default agent instructions (persona.md), state the precedence, make the default follow engine updates. Do together with the default-prompts part of item 1.
+3. `.fork/handoff/agent-tools/HANDOFF.md`: five agent tools (plugin_log, app_request, json_get/json_set, web_fetch, model_try). Not tied to a release number.
+- Pending, not a handoff: upstream PR body `.fork/upstream-pr-body.md` (branch `claude/upstream-context-fixes`, context fixes only). Open it only after testing on real models. Keep `.fork/` out of it.
+- Fork-only app skill `.fork/app-skills/roleplay/edit-large-card` (install into `apps/roleplay/.skills/`). `json_set` (item 3) would replace it.
 
-- Branch `claude/wizardly-heisenberg-0jcodx` continues `claude/fervent-thompson-tej67n` (2026-10-01).
-- Small-model mode (A, 2026-10-01, engine `1705aec`, UI `da34424`): `src/agent/small-window.ts`, tests `test/small-window.test.ts`. User choices: auto = window <= 32k or unknown; hidden tools show automatically (app touched / app project / skill loaded) AND through `tools_enable {group}`; long texts moved to built-in skill `app-authoring`; safe trims for every model.
-  - settings.json `smallModelMode` auto|on|off via `/v1/settings`; Settings > Agent select (12 locales + en; there is no uk locale).
-  - Compact prompt + compact memory section (2000 chars of MEMORY.md, skills by first sentence) + short tool descriptions. AGENTS.md files are pointed to, not inlined. Measured: ~2.5-2.7k tokens before the first message (was ~9.0k); full mode ~8.7k including the new memory_search.
-  - Mechanism: every tool stays in the agent's list (a call by name still runs); `streamFn` sends only `visibleTools(...)`, so a group shows from the next step with no rebuild. Groups: app (app_*, checkpoint), skills, shell, admin, mcp. `groupsFromHistory` restores them after an agent rebuild. Inspector params show `smallModelMode: true`.
-  - All modes: bash schema dropped when the instance has no shell; ask_user description shorter; the "Workspace layout" section shrinks when the inlined AGENTS.md has a `## Layout` part.
-- Memory 3.2 (B, 2026-10-01, engine `dcaeaed`, panel: topics as collapsible groups, add-to select with "New topic…", per-entry Move, search box over all scopes): core MEMORY.md (agent cap 4000 chars; past it memory_propose answers "pick a topic" without asking the user) + topic files `<memory dir>/<topic>.md` listed by name and entry count in the prompt, read with read_file (no memory_read tool: read_file already reads them, and a tool schema costs every request). `memory_propose {topic?}`; replaces searches every file of the scope (replaces + topic = move). `memory_search {query, scope?}` ranks by distinct words, `src/agent/text-match.ts` = the cyrillic-text-matching pipeline (+ English stop words), its table is in `test/memory-topics.test.ts`. Routes: add/forget take topic, `POST /v1/agent/memory/move`, `GET /v1/agent/memory/search`.
-- Tails (C, 2026-10-01):
-  - C1 rename: NOT a bug. `UserService.rename` (src/users.ts) already moves `credentials/<name>` and the avatar with rollback; route-level tests added (`test/auth-rename.test.ts`, `31e78a1`).
-  - C2 git: the emulated git threw on `add` and `rm`, so `git add -A && git commit` in bash stopped before the commit and deletions stayed pending. `add` now succeeds as a no-op, `rm [-r] [-f]` deletes tracked files (honors the denylist and protected paths). Commit itself always recorded deletions. `8aec016`.
-  - C3 hot update (reproduced, fixed): `DevSession.update` (src/builder/dev.ts) never removed modules, matched only exact file paths (a deleted directory arrives as its own path, so nothing changed), and never re-resolved the importer of a deleted file or an import that was missing. Now: cache entries under a changed directory are dropped (fs.ts), importers of a gone file and modules with unresolved imports rebuild, unreachable modules are pruned and sent as `info.removed` (runtime.ts runs prune callbacks and removes their <style>). Tests `test/builder-dev-delete.test.ts`. The runtime part is not checked in a browser.
-  - Found, NOT fixed: fixing a syntax error may not hot-apply (runtime.ts `apply` re-runs only modules that were live; a module that threw is not). A guess from reading, untested.
-  - C4 Windows: only the user can run it.
-- Release 0.1.0 (2026-10-01): the fork's own version line starts at 0.1.0 (user choice; upstream is 1.0.x). `package.json` repository now points to MolfarWav/Chrysalis-Engine-Molfar, so update checks follow the fork (with upstream's repo and 0.1.0, every copy would offer upstream 1.0.2 and a binary would self-update onto it). `CHANGELOG.md` lists every fork change; README opens with the fork notice (AGPL §5). GitHub release `0.1.0` (tag `0.1.0`, created by the user on the branch head; the session proxy cannot push tags).
-- Rename to Molfar Vertep (2026-10-01, branch `claude/upbeat-allen-dvg9e1`, then `main`): user's choice of name. Shown as "Molfar Vertep", package `molfar-vertep`, repo `MolfarWav/Molfar.Vertep` (the repo URL drives update checks). Changed: 24 UI strings in all 13 locales (de/nl compounds `Molfar-Vertep-Server`, ko particles 을/이/은), page titles, CLI and log messages in `src/index.ts`, README head (upstream README kept below a divider), CHANGELOG, launchers (`Chrysalis.bat` also runs `git remote set-url` so old clones follow the new URL; APP folder unchanged). Kept: every internal `chrysalis` name, release asset names (`self-update.ts` matches `Chrysalis-*`), the logo file, strings crediting the Chrysalis maintainers for Store apps and "Needs Chrysalis engine" (app requirements use upstream versions).
-  - Fixed on the way: `bun run typecheck` failed since `a93d197` (test imported `client-agent/src/lib/utils.ts`, which uses DOM types). `shortModelName` moved to `client-agent/src/lib/model-name.ts`, re-exported from utils.
-  - Session containers ship Bun 1.3.14; the project needs 1.4.0 (lockfile format). `npm i -g bun@1.4.0` gives a working binary.
-  - `main` now carries the fork (it was upstream 1.0.2). The Windows launcher still follows the newest `claude/*` branch, not `main`.
-- Closed with the user (2026-10-01), do not reopen:
-  - UI redesign (session "UI переробка та концепти", directions A-D): dropped here. The user redesigns with Hermes Agent (Sonnet) on the desktop and prefers its design. Do not start UI redesign work in this repo unless asked. Status 2026-10-01: Hermes only audits so far; the target is most likely the Roleplay app (workspace, not this repo). The user may hand the changes to a local Claude Code session later.
-  - Release 0.1.0 is this project's first release; its GitHub title should read "Molfar.Vertep 0.1.0" (the user edits it; update checks read `tag_name`, not the title).
-  - The five questions left by session "GitChange #3" (handoff) are all answered and shipped in 0.1.0.
-- Next (handed off): five agent tools for 0.2.0: `.fork/handoff/agent-tools/HANDOFF.md`.
-- Litopys + Roleplay fork (2026-10-02, branch `claude/upbeat-allen-dvg9e1`). Handoff from Hermes-Silvi (Obsidian vault, "Handoff — Molfar Vertep — Litopys built-in plugin"); the user changed its plan:
-  - User decisions: Roleplay never updates from ProjectChrysalis again; it lives in the fork's own repo `MolfarWav/Molfar.Vertep-Roleplay` (a GitHub fork of Roleplay-Chrysalis), built from the user's desktop workspace code; existing installs switch source on boot. So Litopys is NOT engine-seeded (handoff option a dropped): it is a normal plugin in the Roleplay repo.
-  - Engine: `FORKED_APPS`/`forkOf`/`adoptForkedApps` in `src/apps/store.ts` (boot, `src/index.ts`; rewrites install source, app manifest source and bundled plugins' sources); Store list shows the fork URL; `OFFICIAL_SOURCES` adds `https://github.com/MolfarWav/`. Plugin manifest `replaces: [ids]` (`src/plugins/runtime.ts` sets `replacedBy` at discovery; `schedulablePlugins`, `enabledAppPlugins`, route diagnostics skip it; plugin lists show it off with `replacedBy`). Litopys replaces archivarius, so the user's old copy stops running after the update without anyone deleting it.
-  - Fixed on the way: since 0.1.0 every app update was refused ("needs engine >=1.0.0", checked against the fork's 0.1.0). `APP_API_VERSION` (1.0.2, `src/install.ts`) is what app `engine` ranges are checked against; raise it when an upstream merge brings a newer app contract.
-  - Roleplay fork 4.19.0 = upstream 4.18.2 + the user's workspace code (73 agent commits: engine plugin Cyrillic memory recall, plugin panel field kinds, model picker, neon theme) + litopys (Hermes' staged rename + legacy read of `archivarius/*`) - archivarius. Kept upstream AGENTS.md (the user's copy was overwritten by the agent on 2026-09-29 with the workspace text; keeping upstream's avoids an update conflict). Desktop update simulated with `mergeTrees` against the real baseline: 0 conflicts.
-  - Verified live (throwaway engine, mock model, 5 s interval): scheduled tick wrote `litopys/store.json` carrying the legacy fact, rewrote vault-chats MD, legacy store untouched, 0 Archivarius calls with both present; Archivarius alone also ticks (so the workspace onTick fix works; on the desktop no chat had 4+ new messages after it, which is why nothing was written).
-  - Fix after the user's first boot (2026-10-02, `9cecdca`): adoption had restamped the workspace plugin manifests but not the baseline, so the first update would have conflicted on plugins/{engine,studio-import,tools}/manifest.json. `adoptForkedApps` now restamps the baseline's plugin manifests too, and heals installs moved earlier. Simulated on a copy of the desktop (workspace + baseline): 0 conflicts.
-  - Roleplay 4.19.1 (fork `8e273d2`): Litopys prompts are defaults in code (`DEFAULT_PROMPTS`); config.json keeps only changed prompts, `PAST_DEFAULT_PROMPTS` count as default; the panel shows "Restore default prompts" (existing deleteUrl/deleteLabel, no src/ change) calling DELETE /litopys/config/prompts. New universal prompts, checked on DeepSeek V4.1 Flash (NanoGPT) with a Ukrainian scene: output in Ukrainian, claims attributed, one-scene details dropped; the curator merged duplicates and retired the contradicted and one-scene items.
-  - Next task, handed off: default agent instructions (persona.md) rewrite, precedence, follow-the-default: `.fork/handoff/agent-instructions/HANDOFF.md`.
-  - Known, not fixed: Roleplay typecheck fails on one line in `src/components/extensions/plugin-panel.tsx:88` (Base UI Select `v` may be null; from the workspace code). Fixing it in 4.19.0 would conflict on the first update; ship it in 4.19.1 after both machines updated. Workspace `data/_debug/` still exists. 13 engine tests fail on Windows on main as well (shell, 0600 modes, self-update).
-- Rules review (2026-10-02): the delegation rule (Opus/Fable orchestrate, other models execute, via the Agent tool's `model` or the `ask-model` skill) is now in `CLAUDE.md` and `~/.claude/CLAUDE.md`. User decisions: one launcher in the repo root, source mode, update channel = latest release tag (`dev` = newest `claude/*`); versions 0.x.0 for significant changes, 0.x.y for patches. Next task, handed off: default prompts (language line, tests, convention), release process (`.fork/RELEASE.md`), universal launcher: `.fork/handoff/workflow-release/HANDOFF.md`.
+## Releases
+- 0.1.0 (2026-10-01) is the only release (tag `0.1.0`). Version line is the fork's own (upstream is 1.0.x); `package.json` repository points to MolfarWav/Molfar.Vertep so update checks follow the fork. `CHANGELOG.md` lists every fork change; `## Unreleased` already holds the rename, Litopys, the Roleplay fork, `replaces` and the app-update fix: next release is 0.2.0 for that reason alone.
+- Tags are created by the user on GitHub (the session proxy cannot push tags). Release assets keep upstream's `Chrysalis-*` names (`self-update.ts` matches them).
+- `APP_API_VERSION` (1.0.2, `src/install.ts`): what app `engine` ranges are checked against; raise it only when an upstream merge changes the app contract.
+
+## What the engine has (all shipped; details in CHANGELOG and the archive)
+- Agent context: `src/agent/context-budget.ts`, `compact.ts`; small-model mode (`small-window.ts`, Settings > Agent: Auto/On/Off, auto at window <= 32k or unknown, ~2.6k tokens before the first message); prompt inspector (`src/inspector.ts`, last 20 requests per user).
+- Memory and skills: `src/agent/memory.ts` (core MEMORY.md + topic files, `memory_search`, written only through confirmed cards); `builtin-skills/` ship with the engine (a global workspace skill of the same name replaces one, deleting the copy resets it); tools `skill_propose`, `skill_edit`, `skill_load`.
+- Projects on the agent page (`src/agent/projects.ts`, `/v1/projects…`; chats can move between projects), checkpoints (`checkpoints.ts`, restore = code only), protected paths (`protect.ts`, list in settings `agentProtectedPaths`), `ask_user` with options and several questions, default instructions (`DEFAULT_PERSONA` in `src/paths.ts`, "Restore default instructions").
+- Model pickers (Settings > Models, `models-shown.json`), full profile backup (`src/profile-backup.ts`, Settings > Backup; import replaces the profile).
+- Emulated git: `add` is a no-op, `rm` deletes tracked files. Hot update removes deleted modules (`src/builder/dev.ts`).
+- Product name Molfar Vertep (UI in 13 locales, README, launchers); internal `chrysalis` names kept so upstream merges stay clean.
+
+## Roleplay and Litopys
+- Roleplay never updates from ProjectChrysalis again: it lives in `MolfarWav/Molfar.Vertep-Roleplay` (fork of Roleplay-Chrysalis). Code on disk: `data/users/<name>/apps/roleplay` (desktop `molfarwav2`); no separate checkout; assembled in a scratch copy for releases.
+- Engine: `FORKED_APPS`/`forkOf`/`adoptForkedApps` (`src/apps/store.ts`, run on boot) switch existing installs to the fork source and restamp the baseline's plugin manifests; `OFFICIAL_SOURCES` includes `https://github.com/MolfarWav/`. Plugin manifest `replaces: [ids]` keeps a sibling on disk but never runs it.
+- Roleplay 4.19.1 (fork `8e273d2`): Litopys replaces Archivarius (reads the legacy `archivarius/*` until its first save); prompts are defaults in code (`DEFAULT_PROMPTS`, config keeps only changes, `PAST_DEFAULT_PROMPTS`, "Restore default prompts"). Checked live with a mock model and on DeepSeek V4.1 Flash with a Ukrainian scene.
+- Workspace work (apps, plugins, skills, memory) belongs to the built-in agent; for it write a copy-pasteable prompt (example: `.fork/archive/2026-10-batch-1/workspace-agent-task.md`).
+
+## Open, known, not fixed
+- Roleplay typecheck fails on one line, `src/components/extensions/plugin-panel.tsx:88` (Base UI Select `v` may be null; workspace code). Fix it only after both machines took 4.19.1, or the first update conflicts.
+- Workspace `data/_debug/` still exists on the desktop.
+- 13 engine tests fail on Windows (shell, 0600 modes, self-update) and on main too.
+- Fixing a syntax error may not hot-apply (`runtime.ts` `apply` re-runs only modules that were live); a guess from reading, untested. The runtime part of the deleted-module fix is not checked in a browser.
+- Not tested on Windows: the profile import's folder swap (fails safe on locked files).
+- The workspace has no backup off the user's disk (no remote).
+
+## Traps
+- Bun: session containers ship 1.3.14, the project needs 1.4.0 (`npm i -g bun@1.4.0`).
+- `/v1/models` without `?all=1` returns only the shown models.
+- The app bridge allowlist exists twice (`appBridgeAllows` in `app.ts`, `client/public/app-bridge-host.js`); new shell-only routes need no change there, but go into the lists in `test/security.test.ts` and `test/malicious-plugin.test.ts`.
+- A session's system prompt is cached per agent instance: anything that changes it must `evictAgents` or change the docs/project stamp.
+- The workspace AGENTS.md is overwritten on boot when the engine's marker version is newer (a user's edited copy keeps its text only through the digest).
+- Browser checks: skill `browser-check` (`.claude/skills/browser-check/`). Real model runs need a mock OpenAI-compatible server (the skill has one).
+- Launchers: `.fork/start-chrysalis.bat` (desktop) and `.fork/Chrysalis.bat` (laptop, `D:\ROLEPlay\Chrysalis.bat` is a copy; follows the newest `claude/*` branch). Both are to be replaced by the root launcher (handoff 1). An untracked `start-chrysalis.bat` in the repo root is an old copy.
+
+## Closed with the user: do not reopen
+- UI redesign is done outside this repo (Hermes Agent, Sonnet, mostly on the Roleplay app); do not start UI redesign here unless asked.
+- Release 0.1.0 title on GitHub reads "Molfar.Vertep 0.1.0"; update checks read `tag_name`.
+- Delegation rule (Opus/Fable orchestrate, other models execute) is in `CLAUDE.md` and `~/.claude/CLAUDE.md`. `ask-model` is on the desktop only; `adaptive-agent` is a Claude Code skill pair, not for Hermes.
+- Launcher: one `.bat`, source mode, update channel = latest release tag, `dev` = newest `claude/*`. Versions: significant = minor, patch = patch.

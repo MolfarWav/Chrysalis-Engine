@@ -10,10 +10,10 @@ Read `CLAUDE.md`, then `.fork/STATE.md`, then this. Code refs verified on commit
 - Versions: significant change = minor (0.1.0 -> 0.2.0), small patch = patch (0.1.0 -> 0.1.1).
 
 ## Status of the user's six rules
-1. Cheap executors: done (above). `ask-model` skill exists on this desktop (`~/.claude/skills`, symlink to `G:\AI-Data\claude\skills`; keys OK, `--check` passes). Not known whether the laptop has it.
-1a. Self-improvement plugin = `adaptive-agent` (claude.ai plugin, enabled): skills `build-user-profile` and `skill-review`, manual only, no hooks seen. Its code was not read. `claude-mem` sits in `~/.claude/plugins/cache` but is disabled. This project's memory dir was empty on 2026-10-02. Open: run `skill-review` once and decide whether to keep it.
+1. Cheap executors: done (above). `ask-model` exists on the desktop only (`~/.claude/skills`, symlink to `G:\AI-Data\claude\skills`); the laptop has neither it nor the G: drive, the user copies things over when needed. Closed.
+1a. `adaptive-agent` (self-improvement plugin): a Claude Code skill pair (`build-user-profile`, `skill-review`), manual only, for Claude Code sessions, NOT for Hermes or the built-in agent. Closed; nothing to hand off.
 3. Process: unchanged. Hermes/built-in agent produce handoffs, Claude Code builds, pushes, releases. Ideas are also generated in Claude Code sessions. `.fork/handoff/` is in a PUBLIC repo: no secrets.
-4. Paths are in `CLAUDE.md` (desktop `C:\Users\sulaz\Chrysalis-Engine`, laptop `D:\ROLEPlay\Chrysalis-Engine`). Missing, ask the user: path of the Roleplay fork checkout (`MolfarWav/Molfar.Vertep-Roleplay`) on each machine, and whether `G:\AI-Data` exists on the laptop.
+4. Paths are in `CLAUDE.md`: desktop `C:\Users\sulaz\Chrysalis-Engine`, laptop `D:\ROLEPlay\Chrysalis-Engine`. Roleplay has no separate checkout: `data/users/molfarwav2/apps/roleplay` inside the engine folder (desktop). Closed.
 
 ## Work for Claude Code (this repo)
 
@@ -42,7 +42,7 @@ Write `.fork/RELEASE.md` (fork-only) with the steps:
 4. Prepare the GitHub release title ("Molfar.Vertep X.Y.Z") and body text.
 5. The user creates the tag and the release on GitHub (the session proxy cannot push tags); `release.yml` then builds `Chrysalis-<version>-<target>` archives (names stay upstream's, `self-update.ts` matches `Chrysalis-*`).
 6. Keep `APP_API_VERSION` (`src/install.ts`) apart from the fork version: raise it only when an upstream merge changes the app contract.
-First candidate: 0.2.0 (CHANGELOG `Unreleased` already holds the rename, Litopys, the Roleplay fork, `replaces`, the app-update fix; the five agent tools in `.fork/handoff/agent-tools/HANDOFF.md` are also planned for 0.2.0).
+First release candidate: 0.2.0. Reason: Archivarius became Litopys and ships in the user's own Roleplay fork, plus the rename to Molfar Vertep, `replaces` in plugin manifests and the app-update fix (all already in CHANGELOG `Unreleased`). The five agent tools (`.fork/handoff/agent-tools/HANDOFF.md`) are NOT part of that decision: they go into whichever release they are ready for.
 
 ### C. Universal launcher (rule 6)
 One file in the repo root (a fork-only file; keep it out of upstream PRs). Replaces `.fork/Chrysalis.bat`, `.fork/start-chrysalis.bat`, and the stray untracked `start-chrysalis.bat` in the root.
@@ -62,8 +62,7 @@ Design (verified facts):
 
 ## Work for the built-in agent / Hermes (not this repo)
 - Apply rule 2 to every workspace plugin and app prompt they write: English, a language line, defaults in code, config holds only changes, a Restore button. Point them to the future skill `default-prompts` (A.3) once it ships.
-- Run `skill-review` from `adaptive-agent` once and report whether it is worth keeping (1a).
 - Ideas for plugins, engine changes and UI keep coming as handoffs; they do not need to wait for A-C.
 
 ## Order
-1. B (small, unblocks every release). 2. A, with the agent-instructions handoff. 3. C. 4. The five agent tools (0.2.0) as already planned.
+1. B (small, unblocks every release). 2. A, with the agent-instructions handoff. 3. C. 4. The five agent tools, in a later release.

@@ -13,11 +13,12 @@ holds the rules that do not change between tasks; the handoff holds the task.
 - Verify before claiming anything about code or state; say plainly what is a guess.
 - They test on free OpenRouter models: mostly text-only, small context windows.
 - They run from source on Windows, on two machines, and switch between them: desktop `C:\Users\sulaz\Chrysalis-Engine` (launcher `.fork/start-chrysalis.bat`), laptop `D:\ROLEPlay\Chrysalis-Engine` (launcher `.fork/Chrysalis.bat`, which switches to the newest `claude/*` branch on its own, so pushing your branch is how they get it).
+- The Roleplay app has no checkout of its own: its code is `data/users/molfarwav2/apps/roleplay` inside each machine's engine folder (fork repo MolfarWav/Molfar.Vertep-Roleplay, assembled in a scratch copy). The laptop has no `ask-model` skill and no G: drive; the user copies things over when needed.
 - `data/` is gitignored: code syncs between the machines through GitHub, the workspaces (apps, chats, memory, keys) do not. The repo is public; workspace data never goes into it.
 
 ## Two workers, no overlap
 - Claude Code changes the engine: this repo.
-- The built-in agent changes the user's workspace (`data/users/<name>/`: apps, plugins, skills, memory). A cloud session cannot see it. For workspace work, write a copy-pasteable task prompt for the built-in agent (example: `.fork/handoff/next/workspace-agent-task.md`).
+- The built-in agent changes the user's workspace (`data/users/<name>/`: apps, plugins, skills, memory). A cloud session cannot see it. For workspace work, write a copy-pasteable task prompt for the built-in agent (example: `.fork/archive/2026-10-batch-1/workspace-agent-task.md`).
 
 ## Map
 - `src/server/app.ts`: every HTTP route. `src/agent/`: the built-in agent (`agent.ts` system prompt and runs, `tools.ts`, `memory.ts` memory and skills, `projects.ts`, `checkpoints.ts`, `protect.ts` protected paths, `git-cli.ts`, `context-budget.ts` token estimates). `src/models.ts`: every model call. `src/inspector.ts`: last requests per user. `src/paths.ts`: workspace layout, `AGENT_WRITE_DENYLIST`, workspace AGENTS.md text, `DEFAULT_PERSONA`.

@@ -7,7 +7,12 @@ Fork-only. The version line is the fork's own (0.1.0, 0.2.0, ...), independent o
 2. **Checks pass** on the branch: `bun run typecheck`, `bun run test` (the known Windows-only failures are listed in `.fork/STATE.md`), `bun run build:client`.
 3. **Bump `package.json` `version` before the tag.** Update checks compare the release's `tag_name` (a leading `v` is dropped) with this version; a mismatch makes every copy offer the update forever, and `release.yml` refuses a tag that does not match.
 4. **CHANGELOG.md:** rename `## Unreleased` to `## X.Y.Z (YYYY-MM-DD)` and start a new empty `## Unreleased` above it.
-5. **Release notes:** write `.fork/release-notes/X.Y.Z.md`, the body of the GitHub release (a short summary for users plus the CHANGELOG section). `release.yml` uses it; without it GitHub generates notes from commits.
+5. **Release notes:** write `.fork/release-notes/X.Y.Z.md`, the body of the GitHub release. `release.yml` uses it; without it GitHub generates notes from commits. It is a full, correct preview for users, not a copy of the CHANGELOG (the user's rule, 2026-10-02):
+   - First half: every change that improves play, the UI or the agent, each under its own large heading with an emoji (`### 🔄 Updates in one place`), explained in plain words: what the user sees, what it does for them, what changed from before. Include what the release brings through app updates (Roleplay versions), and say how to get those.
+   - Then `## 🛠️ Fixes` for user-visible bug fixes.
+   - Then `## Other changes`: minor and technical items, one line each.
+   - End with how to get it (source, downloads, app updates) and a link to CHANGELOG.md.
+   - Every claim checked against the code or the app's CHANGELOG; nothing that ships later.
 6. **Main:** the release is built only from a tag on `main`. Fast-forward main to the release commit: `git push origin HEAD:main` (main must be an ancestor of the branch; merge first if it is not).
 7. **The tag (the user does this, the session proxy cannot push tags):** from a terminal in the engine folder:
    ```

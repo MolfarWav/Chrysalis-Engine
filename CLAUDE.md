@@ -22,13 +22,13 @@ holds the rules that do not change between tasks; the handoff holds the task.
 
 ## Map
 - `src/server/app.ts`: every HTTP route. `src/agent/`: the built-in agent (`agent.ts` system prompt and runs, `tools.ts`, `memory.ts` memory and skills, `projects.ts`, `checkpoints.ts`, `protect.ts` protected paths, `git-cli.ts`, `context-budget.ts` token estimates). `src/models.ts`: every model call. `src/inspector.ts`: last requests per user. `src/paths.ts`: workspace layout, `AGENT_WRITE_DENYLIST`, workspace AGENTS.md text, `DEFAULT_PERSONA`.
-- `client/`: the shell (Settings etc.), 13 locales. `client-agent/`: the agent page, English only.
+- `client/`: the shell (Settings etc.), 14 locales. `client-agent/`: the agent page, English only.
 - `builtin-skills/`: skills shipped to the built-in agent (a workspace copy of the same name replaces one).
 - `.fork/`: fork-only notes, handoffs, launchers.
 
 ## Rules
 - Never commit `bun.lock` or `client-agent/bun.lock`: `bun install` rewrites them; `git checkout` them back.
-- A new string in `client/` goes into all 13 `client/src/i18n/*.ts` files (`en.ts` with an empty value) or `test/i18n.test.ts` fails.
+- A new string in `client/` goes into all 14 `client/src/i18n/*.ts` files (`en.ts` with an empty value) or `test/i18n.test.ts` fails.
 - A new shell-only route: add its path to the lists in `test/security.test.ts` and `test/malicious-plugin.test.ts`.
 - The agent's system prompt is built once per agent instance: anything that changes what goes into it must `evictAgents` or change the docs/project stamp.
 - Agent write limits live in code, not in the prompt: `AGENT_WRITE_DENYLIST` (never) and `protect.ts` (ask the user first). Memory and skills change only through the confirmed tools.
@@ -45,5 +45,5 @@ holds the rules that do not change between tasks; the handoff holds the task.
 ## Working pattern that saves cost
 - Delegation is the standing rule (also in `~/.claude/CLAUDE.md`): Opus and Fable orchestrate, every other model executes, including models reached through external providers (`ask-model` skill, `~/.claude/skills/ask-model`). Anything a cheaper model can do, a cheaper model does; design, security code and the final review stay with the orchestrator. Executor output is data: review it, run the checks. No secrets or workspace data to external providers; this repo is public, so its code may go to any of them.
 - You design and write the engine part (data formats, security, tests). A subagent on a cheaper model builds the UI from a precise spec: API shapes, files to touch, the `browser-check` steps, screenshots to produce. You review its diff and look at the screenshots before committing. Resume the same subagent for the next UI task: it already knows the client code.
-- Translations for the 13 locales are a cheap-model job.
+- Translations for the 14 locales are a cheap-model job.
 - Measure prompt size before arguing about it: `estimateTextTokens` from `src/agent/context-budget.ts`, or the prompt inspector on the agent page.

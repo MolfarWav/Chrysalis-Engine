@@ -17,9 +17,10 @@ import pl from "../client/src/i18n/pl.js";
 import pt from "../client/src/i18n/pt.js";
 import ru from "../client/src/i18n/ru.js";
 import trDict from "../client/src/i18n/tr.js";
+import uk from "../client/src/i18n/uk.js";
 import zh from "../client/src/i18n/zh.js";
 
-const DICTS: Record<string, Record<string, string>> = { de, es, fr, it: itDict, ja, ko, nl, pl, pt, ru, tr: trDict, zh };
+const DICTS: Record<string, Record<string, string>> = { de, es, fr, it: itDict, ja, ko, nl, pl, pt, ru, tr: trDict, uk, zh };
 
 const placeholders = (s: string): string[] =>
   [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!).sort();

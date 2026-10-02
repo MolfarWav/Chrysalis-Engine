@@ -7,6 +7,8 @@ Versions here count from 0.1.0 and are independent of upstream's.
 
 ## Unreleased
 
+- The interface speaks Ukrainian: Українська in Settings > General > Language, picked automatically for a browser set to Ukrainian. The shell now has 14 languages.
+
 ## 0.2.0 (2026-10-02)
 
 - **Updates in one place.** An Updates button in the top bar, with a badge when anything is newer, opens one panel: Molfar Vertep itself (for admins; a copy run from source says to restart it with its launcher) and every app installed from a repository. Each row shows current → new version, a link to the changes and an Update button; "Update all" updates the apps one by one and stops at the first that needs a decision. Overlapping edits get the same choices as on the app page (keep mine, take the update, ask the agent to merge). Checks run once when the shell starts, then on "Check now" or after an update.

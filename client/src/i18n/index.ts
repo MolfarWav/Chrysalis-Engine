@@ -17,6 +17,7 @@ import pl from "./pl"
 import pt from "./pt"
 import ru from "./ru"
 import trDict from "./tr"
+import uk from "./uk"
 import zh from "./zh"
 
 export { LOCALES, type Locale } from "./locales"
@@ -68,7 +69,7 @@ type Dict = Record<string, string>
 
 // Static imports: the shell bundles every dictionary, so a language switch is
 // one synchronous lookup with no loading state to design around.
-const DICTS: Record<Locale, Dict> = { en, de, es, fr, it, ja, ko, nl, pl, pt, ru, tr: trDict, zh }
+const DICTS: Record<Locale, Dict> = { en, de, es, fr, it, ja, ko, nl, pl, pt, ru, tr: trDict, uk, zh }
 
 export type Key = keyof typeof en
 

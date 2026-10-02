@@ -13,6 +13,7 @@ export const LOCALES = {
   pt: "Português",
   ru: "Русский",
   tr: "Türkçe",
+  uk: "Українська",
   zh: "简体中文",
 } as const
 export type Locale = keyof typeof LOCALES

@@ -13,7 +13,7 @@ The full log of everything before this date, with commit hashes, is `.fork/archi
 
 ## Releases
 - 0.1.0 (2026-10-01): tag `0.1.0` (no `v`, on a `claude/*` branch), so `release.yml` never ran and it has no archives. Version line is the fork's own (upstream is 1.0.x); `package.json` repository points to MolfarWav/Molfar.Vertep so update checks follow the fork.
-- 0.2.0 (2026-10-02): prepared, NOT yet tagged. `package.json` is 0.2.0, CHANGELOG has the section, notes in `.fork/release-notes/0.2.0.md`, main fast-forwarded to the release commit. Waiting for the user: enable Actions on the fork (never enabled: zero runs), then push tag `v0.2.0` on main. Process: `.fork/RELEASE.md`.
+- 0.2.0 (2026-10-02): RELEASED. Tag `v0.2.0` on main (`2ce1946`), release "Molfar.Vertep 0.2.0" built by `release.yml` with all archives (Windows, macOS x64/arm64, Linux x64/arm64, Android APK debug-signed: no keystore secret, so the APK cannot update an installed one). Process: `.fork/RELEASE.md`.
 - Tags are pushed by the user from a terminal (the session proxy cannot push tags); `release.yml` creates the GitHub release itself (title "Molfar.Vertep X.Y.Z", body from `.fork/release-notes/X.Y.Z.md`; the Docker step runs only upstream). Release assets keep upstream's `Chrysalis-*` names (`self-update.ts` matches them).
 - `APP_API_VERSION` (1.0.2, `src/install.ts`): what app `engine` ranges are checked against; raise it only when an upstream merge changes the app contract.
 
@@ -24,7 +24,7 @@ The full log of everything before this date, with commit hashes, is `.fork/archi
 - Model pickers (Settings > Models, `models-shown.json`), full profile backup (`src/profile-backup.ts`, Settings > Backup; import replaces the profile).
 - Updates panel (0.2.0): top-bar Updates button with a badge (`client/src/updates-panel.tsx`); engine row for admins (source installs: "restart with its launcher"), one row per app with an update source, "Update all" stops at the first row needing a decision. The app update flow (strategies, dep/permission review) lives in `client/src/app-update.tsx`, shared with the launcher's AppDetail. Checks: once per shell start, then "Check now" or after an update. The logo opens the launcher. Standalone plugins imported from git have no update source yet, so they are not in the panel.
 - Emulated git: `add` is a no-op, `rm` deletes tracked files. Hot update removes deleted modules (`src/builder/dev.ts`).
-- Product name Molfar Vertep (UI in 13 locales, README, launchers); internal `chrysalis` names kept so upstream merges stay clean.
+- Product name Molfar Vertep (UI in 14 locales incl. Ukrainian `uk` since 2026-10-02, README, launchers); internal `chrysalis` names kept so upstream merges stay clean.
 
 ## Roleplay and Litopys
 - Roleplay never updates from ProjectChrysalis again: it lives in `MolfarWav/Molfar.Vertep-Roleplay` (fork of Roleplay-Chrysalis). Code on disk: `data/users/<name>/apps/roleplay` (desktop `molfarwav2`); no separate checkout; assembled in a scratch copy for releases.

@@ -19,6 +19,8 @@ import {
   mcpApi,
   listProviders,
   personaApi,
+  agentsMdApi,
+  type AgentsMdStatus,
   prefs,
   authApi,
   adminUsersApi,
@@ -746,6 +748,7 @@ function AgentTab() {
         <div className="flex flex-col gap-2">
           <h3 className="text-13 font-medium text-ink">{tr("Agent instructions")}</h3>
           <p className="text-12 text-ink-muted">
+            {tr("Your standing preferences for the agent. The engine's own rules (language, safety, verification) always apply.")}{" "}
             {tr("Appended to your agent's system prompt (saved to persona.md). Your agent can change it only after you allow it.")}
           </p>
           <textarea
@@ -767,10 +770,63 @@ function AgentTab() {
             {saved ? <span className="text-12 text-success">{tr("Saved")}</span> : null}
           </div>
           {err ? <div className="text-12 text-danger">{err}</div> : null}
+          <WorkspaceContractRow />
         </div>
         <ProtectedFilesSection />
       </div>
     </Pane>
+  )
+}
+
+/** The workspace's AGENTS.md: is it still the engine's default (it follows
+ *  updates), changed, written by the user, or gone. */
+function WorkspaceContractRow() {
+  const [status, setStatus] = useState<AgentsMdStatus | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState("")
+
+  useEffect(() => {
+    void agentsMdApi.get().then(setStatus).catch(() => undefined)
+  }, [])
+
+  if (!status) return null
+  const line =
+    status.state === "default"
+      ? tr("The default. It follows Molfar Vertep updates.")
+      : status.state === "edited"
+        ? tr("Changed since the engine wrote it, so updates no longer reach it.")
+        : status.state === "own"
+          ? tr("Written without the engine's marker, so updates never reach it.")
+          : tr("Missing. The default comes back on the next start.")
+  const newer = status.outdated && status.state !== "own" && status.state !== "missing"
+
+  const restore = async () => {
+    if (!window.confirm(tr("Your AGENTS.md is replaced by the default. The current text stays in the workspace history."))) return
+    setBusy(true)
+    setErr("")
+    try {
+      setStatus(await agentsMdApi.restore())
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-1 flex flex-col gap-1 border-t border-line pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+        <span className="text-12 font-medium text-ink">{tr("Workspace contract (AGENTS.md)")}</span>
+        {status.state !== "default" || status.outdated ? <Button variant="ghost" size="small" disabled={busy} onClick={() => void restore()}>
+            {tr("Restore default")}
+          </Button> : null}
+      </div>
+      <p className="text-12 text-ink-muted">
+        {line}
+        {newer ? " " + tr("A newer default is available.") : ""}
+      </p>
+      {err ? <div className="text-12 text-danger">{err}</div> : null}
+    </div>
   )
 }
 

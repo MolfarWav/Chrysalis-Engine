@@ -23,7 +23,7 @@ import { APP_API_VERSION, ENGINE_REPOSITORY, ENGINE_VERSION, resourcesDir } from
 import type { ServerSettings } from "./settings.js";
 import { latestRelease } from "../updates.js";
 import { SELF_UPDATE, startUpdate, updateState } from "../self-update.js";
-import { DEFAULT_PERSONA, agentReadDenied, userPaths, safeResolve, type UserPaths } from "../paths.js";
+import { DEFAULT_PERSONA, agentReadDenied, restoreWorkspaceAgentsMd, userPaths, safeResolve, workspaceAgentsMdStatus, type UserPaths } from "../paths.js";
 import * as git from "../git.js";
 import { UserModelService, ModelNotConfiguredError, type ModelPricing } from "../models.js";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
@@ -3014,6 +3014,20 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     await git.commitAll(p.root, u.username, "settings: agent instructions").catch(() => undefined);
     evictAgents(u.username); // system prompt snapshots at agent creation
     return c.json({ ok: true });
+  });
+
+  // workspace AGENTS.md against the engine's default; restore puts the
+  // default back (the old text stays in git history)
+  app.get("/v1/settings/agents-md", (c) => {
+    return c.json(workspaceAgentsMdStatus(dataDir, c.get("user").username));
+  });
+
+  app.post("/v1/settings/agents-md/restore", async (c) => {
+    const u = c.get("user");
+    restoreWorkspaceAgentsMd(dataDir, u.username);
+    await git.commitAll(c.get("paths").root, u.username, "settings: workspace AGENTS.md back to the default").catch(() => undefined);
+    evictAgents(u.username); // the contract is inlined into the system prompt
+    return c.json(workspaceAgentsMdStatus(dataDir, u.username));
   });
 
   // ---------- protected paths: the agent changes these only after a yes ----------

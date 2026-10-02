@@ -19,7 +19,7 @@ import { ConfigError, dataDirOf, envNameOf, flagNameOf, loadConfig, parseFlags, 
 import { ENGINE_VERSION, INSTALL_KIND, IN_CONTAINER, resolveHomeDir } from "./install.js";
 import { UserService } from "./users.js";
 import { SessionService } from "./sessions.js";
-import { bootstrapUserDir, ensureGitignoreEntries, ensureNotesDir, ensureWorkspaceAgentsMd, migrateConnectionsIntoDataRoot, migrateCredentialsIntoDataRoot, migrateMcpIntoDataRoot, migrateSpeechIntoDataRoot, migrateWebSearchPreset, userPaths } from "./paths.js";
+import { bootstrapUserDir, ensureGitignoreEntries, ensureNotesDir, ensurePersonaDefault, ensureWorkspaceAgentsMd, migrateConnectionsIntoDataRoot, migrateCredentialsIntoDataRoot, migrateMcpIntoDataRoot, migrateSpeechIntoDataRoot, migrateWebSearchPreset, userPaths } from "./paths.js";
 import { initRepo, untrackBoundary, commitAll as gitCommitAll, commitPaths as gitCommitPaths } from "./git.js";
 import { renameAppDir } from "./apps/manager.js";
 import { gcRepoIfChunky } from "./apps/git.js";
@@ -37,6 +37,7 @@ import { bindLegacyKeys } from "./connections.js";
 import { readLock, releaseLock, runningEngine, writeLock } from "./lock.js";
 import { cleanUpAfterUpdate, dropEngineFiles, runReplacement, updateState } from "./self-update.js";
 import { dataFormatProblem, recordDataFormat } from "./data-format.js";
+import { pruneUnchangedSkillCopies } from "./agent/memory.js";
 
 // The engine runs unsupervised — an unhandled socket error must not take the
 // user's app dark. Network-grade errors (a client vanished mid-read, a
@@ -532,6 +533,16 @@ async function prepareAccounts(users: UserService, dataDir: string): Promise<voi
     // which is handed it, and to any coding agent pointed at this directory
     if (ensureWorkspaceAgentsMd(dataDir, u.username)) {
       await gitCommitAll(p.root, u.username, "docs: workspace AGENTS.md");
+    }
+    // persona.md nobody edited follows the engine's current default
+    if (ensurePersonaDefault(dataDir, u.username)) {
+      await gitCommitAll(p.root, u.username, "settings: agent instructions follow the new default");
+    }
+    // workspace copies of built-in skills that changed nothing stop blocking
+    // the engine's newer versions
+    const pruned = pruneUnchangedSkillCopies(p.root);
+    if (pruned.length) {
+      await gitCommitAll(p.root, u.username, `skills: back to the built-in ${pruned.join(", ")} (the copies were unchanged)`);
     }
     // notes/: the user's own plans and specs, listed for the agent every run
     if (ensureNotesDir(dataDir, u.username)) {

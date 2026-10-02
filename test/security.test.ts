@@ -890,7 +890,7 @@ describe("A2 the bridge's second lock (server side)", () => {
     for (const [method, url] of [
       ["GET", "/v1/apps/evil/%74ree"], ["GET", "/v1/apps/evil/tree"], ["POST", "/v1/apps/evil/%70lugins/import"],
       ["POST", "/v1/apps/evil/%69nstall"], ["POST", "/v1/apps/roleplay/chats"], ["GET", "/v1/agent/sessions"],
-      ["POST", "/v1/shell"], ["PUT", "/v1/mcp/x"], ["GET", "/v1/settings/persona"], ["PUT", "/v1/settings/agent-protection"], ["GET", "/v1/inspector"],
+      ["POST", "/v1/shell"], ["PUT", "/v1/mcp/x"], ["GET", "/v1/settings/persona"], ["GET", "/v1/settings/agents-md"], ["POST", "/v1/settings/agents-md/restore"], ["PUT", "/v1/settings/agent-protection"], ["GET", "/v1/inspector"],
       // an app that CLAIMS official in its own manifest is still imported to the engine
       ["PATCH", "/v1/apps/evil/mcp/web-search"], ["PUT", "/v1/models/pricing"],
     ] as const) {

@@ -223,6 +223,14 @@ export const personaApi = {
   put: (persona: string) => api("PUT", "/v1/settings/persona", { persona }),
 }
 
+export type AgentsMdStatus = { state: "default" | "edited" | "own" | "missing"; outdated: boolean }
+
+/** The workspace contract (AGENTS.md) against the engine's default. */
+export const agentsMdApi = {
+  get: () => api<AgentsMdStatus>("GET", "/v1/settings/agents-md"),
+  restore: () => api<AgentsMdStatus>("POST", "/v1/settings/agents-md/restore"),
+}
+
 export const mcpApi = {
   list: () => api<{ servers: Array<{ id: string; type: string; connected: boolean; enabled: boolean; share: "all" | "agent"; tools?: number; error?: string }> }>("GET", "/v1/mcp").then((r) => r.servers ?? []),
   upsert: (id: string, cfg: Record<string, unknown>) => api("PUT", `/v1/mcp/${encodeURIComponent(id)}`, cfg),

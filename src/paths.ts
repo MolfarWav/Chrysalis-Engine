@@ -250,16 +250,47 @@ Read the app's own AGENTS.md before deciding: it says which of its behavior is a
 `;
 
 /** The agent instructions a workspace starts with (persona.md), and what
- *  Settings > "Restore default instructions" puts back. Short on purpose: it
- *  rides every request, and the rules that must hold are enforced in code
- *  (AGENT_WRITE_DENYLIST, protected paths), not here. */
-export const DEFAULT_PERSONA = `- Reply in the language the user writes in.
+ *  Settings > "Restore default instructions" puts back. They hold the user's
+ *  preferences only: the rules every prompt needs (language, precedence, ask
+ *  first, verify, protected paths) are in the base prompt, which no edit here
+ *  can drop. Short on purpose: persona.md rides every request. */
+export const DEFAULT_PERSONA = `- Explain in plain words, without jargon; say what a technical term means the first time you use it.
+- Keep answers short: the result first, details only when they matter.
+- When an idea looks weak or risky, say so plainly and suggest what you would do instead.
+`;
+
+/** Every default an earlier version seeded, verbatim. A persona.md equal to
+ *  one of these was never edited, so it follows the current default on boot.
+ *  Add the outgoing text here whenever DEFAULT_PERSONA changes. */
+export const PAST_DEFAULT_PERSONAS: readonly string[] = [
+  `- Reply in the language the user writes in.
 - Before building a new app, a UI, or a large feature, ask your questions first (one ask_user card, options with a short explanation each). Skip it when the request is already precise.
 - Put a change in the lightest place that carries it: the app's data/ first, then a plugin of your own, and the app's UI code (src/) only when the change needs it. UI code is protected: the user confirms before you change it.
 - Take a checkpoint before a risky change. When a build keeps failing, offer to restore one instead of piling on fixes.
 - Before you say "done", verify it (skill finish-change) and say what you could not check.
 - When a procedure took several attempts, or the user corrected you twice, offer to keep it as a skill.
-`;
+`,
+];
+
+/** Line endings and surrounding blank space do not make an edit. */
+const personaKey = (s: string): string => s.replace(/\r\n/g, "\n").trim();
+
+/** Move an untouched persona.md to the current default. An edited or emptied
+ *  one is the user's and stays. Returns true when the file changed. */
+export function ensurePersonaDefault(dataDir: string, username: string): boolean {
+  const p = userPaths(dataDir, username);
+  let current: string;
+  try {
+    current = fs.readFileSync(p.persona, "utf8");
+  } catch {
+    return false; // missing: bootstrapUserDir seeds it
+  }
+  const key = personaKey(current);
+  if (!key || key === personaKey(DEFAULT_PERSONA)) return false;
+  if (!PAST_DEFAULT_PERSONAS.some((d) => personaKey(d) === key)) return false;
+  fs.writeFileSync(p.persona, DEFAULT_PERSONA, "utf8");
+  return true;
+}
 
 export function bootstrapUserDir(dataDir: string, username: string): UserPaths {
   const p = userPaths(dataDir, username);
@@ -328,6 +359,32 @@ export function ensureWorkspaceAgentsMd(dataDir: string, username: string): bool
   }
   fs.writeFileSync(am, workspaceAgentsMd(), "utf8");
   return true;
+}
+
+/** Where the workspace AGENTS.md stands against the engine's default:
+ *  "default" (engine-written and unedited), "edited" (engine-written, then
+ *  changed), "own" (no engine marker: written by someone else), "missing".
+ *  `outdated` says the engine ships a newer template than the copy's. */
+export function workspaceAgentsMdStatus(dataDir: string, username: string): { state: "default" | "edited" | "own" | "missing"; outdated: boolean } {
+  const am = path.join(userPaths(dataDir, username).root, "AGENTS.md");
+  let existing: string;
+  try {
+    existing = fs.readFileSync(am, "utf8");
+  } catch {
+    return { state: "missing", outdated: true };
+  }
+  const m = AGENTS_MD_MARKER.exec(existing);
+  if (!m) return { state: "own", outdated: existing !== workspaceAgentsMd() };
+  const outdated = Number(m[1]) < AGENTS_MD_VERSION;
+  // a marker without a digest is an older engine copy, refreshed on boot
+  const edited = !!m[2] && agentsMdDigest(existing.slice(m[0].length)) !== m[2];
+  return { state: edited ? "edited" : "default", outdated };
+}
+
+/** Put the engine's current AGENTS.md back, whatever the copy says. The old
+ *  text stays in the workspace's git history. */
+export function restoreWorkspaceAgentsMd(dataDir: string, username: string): void {
+  fs.writeFileSync(path.join(userPaths(dataDir, username).root, "AGENTS.md"), workspaceAgentsMd(), "utf8");
 }
 
 /** `notes/` and `commands/` are the user's: plans and specs in one, reusable

@@ -344,6 +344,47 @@ export function builtinSkills(): SkillInfo[] {
     .map((s) => ({ ...s, file: `built-in:${s.name}`, builtin: true }));
 }
 
+/** Every file under a folder, relative path -> text with LF line endings. */
+function treeText(dir: string): Map<string, string> | null {
+  const out = new Map<string, string>();
+  const walk = (rel: string): boolean => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(path.join(dir, rel), { withFileTypes: true });
+    } catch {
+      return false;
+    }
+    for (const e of entries) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        if (!walk(r)) return false;
+      } else if (e.isFile()) out.set(r, fs.readFileSync(path.join(dir, r), "utf8").replace(/\r\n/g, "\n"));
+      else return false; // a link or anything odd: not a plain copy
+    }
+    return true;
+  };
+  return walk("") ? out : null;
+}
+
+/** Remove workspace copies of built-in skills that say exactly what the
+ *  built-in says (line endings aside). Such a copy changes nothing today and
+ *  only stops the next engine's better version from reaching this workspace;
+ *  removing it loses nothing. Returns the names removed. */
+export function pruneUnchangedSkillCopies(root: string): string[] {
+  const removed: string[] = [];
+  for (const b of builtinSkills()) {
+    const copyDir = path.join(root, GLOBAL_SKILLS, b.name);
+    if (!fs.existsSync(copyDir)) continue;
+    const copy = treeText(copyDir);
+    const shipped = treeText(path.join(builtinDir(), b.name));
+    if (!copy || !shipped || copy.size !== shipped.size) continue;
+    if (![...shipped].every(([rel, text]) => copy.get(rel) === text)) continue;
+    fs.rmSync(copyDir, { recursive: true, force: true });
+    removed.push(b.name);
+  }
+  return removed;
+}
+
 function subdirs(root: string, rel: string): string[] {
   try {
     return fs

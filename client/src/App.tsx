@@ -425,10 +425,10 @@ function Shell(props: { theme: ThemeControl }) {
             {/* one strip for both layouts: tabs with an accent underline on
                 desktop, a compact segmented control on phones */}
             <nav ref={tabNavRef} className="no-scrollbar flex min-w-0 flex-1 items-stretch overflow-x-auto max-md:items-center" aria-label={tr("Tabs")}>
-              <div className="flex h-full w-max items-stretch max-md:h-8 max-md:overflow-hidden max-md:rounded-[3px] max-md:border max-md:border-line">
+              <div className="flex h-full w-max items-stretch gap-1.5 max-md:h-8">
               {tabs.map((t, i) => (
                   <div key={t.id}
-                    className="group/tab relative flex shrink-0 items-stretch max-md:border-l max-md:border-line max-md:first:border-l-0"
+                    className="group/tab relative flex shrink-0 items-stretch max-md:overflow-hidden max-md:rounded-[3px] max-md:border max-md:border-line"
                     draggable={true}
                     onDragStart={() => setDragIdx(i)}
                     onDragEnd={() => setDragIdx(null)}
@@ -444,7 +444,7 @@ function Shell(props: { theme: ThemeControl }) {
                     }}
                   >
                     <button
-                      className="flex max-w-48 cursor-pointer select-none items-center gap-2 border-b-2 border-transparent py-0 pl-3.5 pr-2 font-heading text-[15px] text-ink-muted transition-colors duration-150 hover:bg-hover hover:text-ink data-[active=true]:max-w-64 data-[active=true]:border-accent data-[active=true]:bg-[linear-gradient(0deg,color-mix(in_oklab,var(--c-accent)_16%,transparent),transparent)] data-[active=true]:text-ink data-[dragging=true]:opacity-40 max-md:max-w-36 max-md:gap-1.5 max-md:border-b-0 max-md:pl-2.5 max-md:pr-1.5 max-md:text-[13px] max-md:data-[active=true]:max-w-44 max-md:data-[active=true]:shadow-[inset_0_-2px_0_var(--c-accent)]"
+                      className="flex max-w-48 cursor-pointer select-none items-center gap-2 border-b-2 border-transparent py-0 pl-4 pr-2.5 font-heading text-[15px] text-ink-muted transition-colors duration-150 hover:bg-hover hover:text-ink data-[active=true]:max-w-64 data-[active=true]:border-accent data-[active=true]:bg-[linear-gradient(0deg,color-mix(in_oklab,var(--c-accent)_16%,transparent),transparent)] data-[active=true]:text-ink data-[dragging=true]:opacity-40 max-md:max-w-36 max-md:gap-1.5 max-md:border-b-0 max-md:pl-2.5 max-md:pr-1.5 max-md:text-[13px] max-md:data-[active=true]:max-w-44 max-md:data-[active=true]:shadow-[inset_0_-2px_0_var(--c-accent)]"
                       data-active={active?.id === t.id}
                       data-dragging={dragIdx === i}
                       onClick={() => {
@@ -471,7 +471,7 @@ function Shell(props: { theme: ThemeControl }) {
                   </div>
                 ))}
               <button
-                className="flex w-9 shrink-0 cursor-pointer items-center justify-center text-ink-muted transition-colors hover:bg-hover hover:text-ink max-md:w-8 max-md:border-l max-md:border-line"
+                className="flex w-9 shrink-0 cursor-pointer items-center justify-center text-ink-muted transition-colors hover:bg-hover hover:text-ink max-md:w-8 max-md:rounded-[3px] max-md:border max-md:border-line"
                 onClick={openNewTab}
                 title={tr("New tab")}
                 aria-label={tr("New tab")}

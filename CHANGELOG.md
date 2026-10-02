@@ -7,6 +7,8 @@ Versions here count from 0.1.0 and are independent of upstream's.
 
 ## Unreleased
 
+## 0.3.0 (2026-10-02)
+
 - The interface speaks Ukrainian: Українська in Settings > General > Language, picked automatically for a browser set to Ukrainian. The shell now has 14 languages.
 - **The agent's instructions are rewritten.** The base prompt now opens with how the agent works: look first (project, notes, memory, the app's AGENTS.md), ask before large work, put changes in the lightest place, check each step, and finish with what changed, what was checked and how to undo it. It never deletes your content unless asked.
 - **The agent answers in your language**, a rule now in the engine's own prompt (full and small-model mode) instead of only in the editable instructions, so no edit can drop it. Code and commit messages stay English; text inside an app follows the app's language.

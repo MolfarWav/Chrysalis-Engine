@@ -456,8 +456,8 @@ async function resetPassword(dataDir: string, username: string | undefined): Pro
   console.log(`New password for ${user.username}: ${password}\nSign in with it, then change it in Settings.`);
 }
 
-/** Open a URL in the desktop's browser. Packaged copies only: a source
- *  checkout restarts on every save under --watch. */
+/** Open a URL in the desktop's browser: packaged copies, and a source
+ *  checkout started by its launcher (CHRYSALIS_LAUNCHER=1). */
 function openBrowser(url: string): void {
   const [cmd, args] =
     process.platform === "win32" ? ["rundll32", ["url.dll,FileProtocolHandler", url]] :
@@ -705,7 +705,12 @@ async function start(homeDir: string, dataDir: string, loaded: LoadedConfig): Pr
   const updated = firstRunAfterUpdate || cameBackFromUpdate;
   delete process.env.CHRYSALIS_UPDATED;
   if (firstRunAfterUpdate) log.info(`Updated to Molfar Vertep ${ENGINE_VERSION}`);
-  if (config.openBrowser && !updated && (INSTALL_KIND === "binary" || INSTALL_KIND === "npm") && !process.env.container) {
+  // a source checkout opens the browser only when its launcher asks: under
+  // `bun run dev` every save restarts the engine. Read once, so a restart in
+  // this same process tree does not open a second window.
+  const launcherAsked = process.env.CHRYSALIS_LAUNCHER === "1";
+  delete process.env.CHRYSALIS_LAUNCHER;
+  if (config.openBrowser && !updated && (INSTALL_KIND === "binary" || INSTALL_KIND === "npm" || launcherAsked) && !process.env.container) {
     openBrowser(setupLink ?? urls.local);
   }
 

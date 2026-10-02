@@ -11,7 +11,7 @@ import { PluginStoreService } from "../plugins/store.js";
 import { discoverPlugins, discoverAppPlugins, runPluginHook, runPluginHookOutcome, runPluginRoute, runPluginTool, readPluginExport, syncSchedules, stopSchedules, invalidatePluginCache, collectSiblingTools, collectSiblingLlmHooks, mergeToolBridges, type LoadedPlugin, type PluginRuntimeDeps, type PluginToolBridge } from "../plugins/runtime.js";
 import { McpRegistry, WEB_SEARCH_PRESET, readStdioApprovals, stdioFingerprint, writeStdioApproval, type CredentialMap, type McpServerConfig } from "../mcp/registry.js";
 import { listApps, readApp, createAppSkeleton, renameAppDir, appTree, validateAppManifest, hashAppTree, type AppInfo } from "../apps/manager.js";
-import { UPDATE_STRATEGIES, applyWrites, mergeBrief, restoreWrites, forgetInstall, mergeTrees, moveInstall, readBaseline, readCodeTree, readInstallSource, readPendingUpgrade, recoverBaseline, satisfiesRange, seedDataTemplates, writeBaseline, writeInstallSource, writePendingUpgrade, type InstallSource } from "../apps/update.js";
+import { UPDATE_STRATEGIES, applyWrites, discardDir, discardStaleStaging, mergeBrief, restoreWrites, forgetInstall, mergeTrees, moveInstall, readBaseline, readCodeTree, readInstallSource, readPendingUpgrade, recoverBaseline, satisfiesRange, seedDataTemplates, writeBaseline, writeInstallSource, writePendingUpgrade, type InstallSource } from "../apps/update.js";
 import { OFFICIAL_SOURCES, createCatalog, forkOf, isOfficialSource, normalizeGitUrl } from "../apps/store.js";
 import { gitClone, gitRemoteHead, isValidGitRef, isValidGitUrl, remoteManifest, stripVcs } from "../apps/git.js";
 import { BACKUP_MAX_BYTES, BACKUP_META_DIR, BackupError, buildBackup, extractBackup, locateBackup, type BackupMeta } from "../apps/backup.js";
@@ -4079,19 +4079,25 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     const body = (await c.req.json().catch(() => ({}))) as { confirmDeps?: boolean; strategy?: unknown; head?: unknown };
     const strategy = UPDATE_STRATEGIES.find((x) => x === body.strategy) ?? "merge";
 
-    const staging = path.join(p.apps, ".staging", `${id}-update`);
+    // a folder of its own per update ("." never appears in an app id): a
+    // leftover that cannot be deleted yet never blocks the next one, and no
+    // delete here ever runs on the main thread
+    const stagingRoot = path.join(p.apps, ".staging");
+    const warnDiscard = (m: string) => log.warn(`[apps] ${u.username}/${id}: ${m}`);
+    discardDir(path.join(stagingRoot, `${id}-update`), warnDiscard); // the name earlier versions used
+    discardStaleStaging(stagingRoot, `${id}.update-`, warnDiscard);
+    const staging = path.join(stagingRoot, `${id}.update-${Date.now().toString(36)}`);
     let head: string;
-    fs.rmSync(staging, { recursive: true, force: true });
     try {
       head = await gitClone(source.git, staging, source.ref);
       stripVcs(staging);
       stampPluginSources(staging, source.git, head);
     } catch (e) {
-      fs.rmSync(staging, { recursive: true, force: true });
+      discardDir(staging, warnDiscard);
       return c.json({ error: `clone failed: ${(e as Error).message}` }, 502);
     }
     const incoming = staging;
-    const dropStaging = () => fs.rmSync(staging, { recursive: true, force: true });
+    const dropStaging = () => discardDir(staging, warnDiscard);
     const incomingManifest = readStaged(incoming)?.manifest;
     if (!incomingManifest) {
       dropStaging();
@@ -4242,7 +4248,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     // granting from it left that plugin with no permissions at all
     grantBundledPlugins(p, id, incoming, source.git);
     dropStaging();
-    fs.rmSync(path.join(info.dir, "dist"), { recursive: true, force: true });
+    discardDir(path.join(info.dir, "dist"), warnDiscard);
     const warnings: string[] = [];
     // installed over the old packages: if the install fails, the app keeps
     // the ones it had instead of none

@@ -1,0 +1,26 @@
+{
+  "app-authoring": [
+    "2d89737d966656eea147ac67171234d7d337c177ace47d8be8751d920cd4e278",
+    "c8fc028c18436b47721b648d290c4030717f8058c33a0519954cb83e3872006f"
+  ],
+  "cyrillic-text-matching": [
+    "e5b2bf4ddd64febcbae4cf76a873834289e9829bf637ec3e29386912622f233a"
+  ],
+  "default-prompts": [
+    "f896ce360929668d4ca30446238b6be839861f9e98245e21fb4cb970434d0f6d"
+  ],
+  "finish-change": [
+    "6347f986cf8867aabfa243b0ce8cbf390b50f9ebda67b5451ae6bd60057ff542",
+    "aeeed7429774a87bbe1af9531008b8e75113eaf2d0a829ea118458123f641efd"
+  ],
+  "plugin-silent-failure": [
+    "ef9a023333b3e55e70d09c608556f95fe8d8e6581abbff276c72f1292085b095",
+    "f3a0a9e253adcd381c36774015aa1968f7c126d9b581dda27b38be1b635f464f"
+  ],
+  "skill-authoring": [
+    "b69da79977d89aa4a2d9f2bd48438e43f7191556852cf75c9deb5fd9c7cdbd88"
+  ],
+  "two-phase-llm": [
+    "18d92fa51796a2bcb56001832c7ad2ec021c34332020a0172845e395b08cf650"
+  ]
+}

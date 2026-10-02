@@ -447,3 +447,34 @@ export function mergeBrief(
     "When the files are merged, rebuild the app and check it loads.",
   ].join("\n");
 }
+
+/** Remove a folder without holding up the server. A synchronous recursive
+ *  delete waits on every file, and on Windows a file another program holds
+ *  (an antivirus scanning a fresh clone) froze the whole engine mid-update.
+ *  The folder is moved aside first when it can be, so its name is free at
+ *  once; the delete itself runs off the main thread, with retries. */
+export function discardDir(dir: string, onError: (message: string) => void = () => {}): void {
+  let target = dir;
+  try {
+    const aside = `${dir}.discard-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    fs.renameSync(dir, aside);
+    target = aside;
+  } catch {
+    /* missing, or held: delete it where it is */
+  }
+  void fs.promises
+    .rm(target, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
+    .catch((e) => onError(`could not remove ${target}: ${(e as Error).message}`));
+}
+
+/** Leftover update staging folders of an app (from an update that stopped
+ *  halfway, or a delete that is still retrying), removed in the background. */
+export function discardStaleStaging(stagingRoot: string, prefix: string, onError?: (message: string) => void): void {
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(stagingRoot);
+  } catch {
+    return;
+  }
+  for (const name of names) if (name.startsWith(prefix)) discardDir(path.join(stagingRoot, name), onError);
+}

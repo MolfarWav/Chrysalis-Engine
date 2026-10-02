@@ -22,6 +22,7 @@
  * the first tool result that touches that app (see projectContextFor), so
  * even a model that skims its instructions gets it.
  */
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Type } from "typebox";
@@ -366,19 +367,45 @@ function treeText(dir: string): Map<string, string> | null {
   return walk("") ? out : null;
 }
 
-/** Remove workspace copies of built-in skills that say exactly what the
- *  built-in says (line endings aside). Such a copy changes nothing today and
- *  only stops the next engine's better version from reaching this workspace;
- *  removing it loses nothing. Returns the names removed. */
+/** One digest for a skill folder: every file's path and text (LF line
+ *  endings), in path order. builtin-skills/.digests.json lists the digest of
+ *  every version of each built-in skill that ever shipped. */
+export function skillTreeDigest(files: Map<string, string>): string {
+  const h = crypto.createHash("sha256");
+  for (const rel of [...files.keys()].sort()) {
+    h.update(rel).update("\0").update(files.get(rel)!.replace(/\r\n/g, "\n")).update("\0");
+  }
+  return h.digest("hex");
+}
+
+/** Digests of every shipped version of each built-in skill. */
+function shippedSkillDigests(): Record<string, string[]> {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(builtinDir(), ".digests.json"), "utf8")) as Record<string, unknown>;
+    const out: Record<string, string[]> = {};
+    for (const [name, list] of Object.entries(raw)) if (Array.isArray(list)) out[name] = list.filter((d): d is string => typeof d === "string");
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** Remove workspace copies of built-in skills that say exactly what some
+ *  shipped version of the built-in said (line endings aside): the current
+ *  one, or any earlier one listed in .digests.json. Such a copy was never
+ *  edited; it only stops the newest built-in from reaching this workspace,
+ *  so removing it loses nothing. Returns the names removed. */
 export function pruneUnchangedSkillCopies(root: string): string[] {
   const removed: string[] = [];
+  const known = shippedSkillDigests();
   for (const b of builtinSkills()) {
     const copyDir = path.join(root, GLOBAL_SKILLS, b.name);
     if (!fs.existsSync(copyDir)) continue;
     const copy = treeText(copyDir);
     const shipped = treeText(path.join(builtinDir(), b.name));
-    if (!copy || !shipped || copy.size !== shipped.size) continue;
-    if (![...shipped].every(([rel, text]) => copy.get(rel) === text)) continue;
+    if (!copy || !shipped) continue;
+    const digest = skillTreeDigest(copy);
+    if (digest !== skillTreeDigest(shipped) && !(known[b.name] ?? []).includes(digest)) continue;
     fs.rmSync(copyDir, { recursive: true, force: true });
     removed.push(b.name);
   }

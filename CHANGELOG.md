@@ -7,7 +7,11 @@ Versions here count from 0.1.0 and are independent of upstream's.
 
 ## Unreleased
 
+## 0.3.1 (2026-10-02)
+
 - **One-file launcher for Windows**, `Molfar-Vertep.bat` in the repository root, for running from source from any folder: it installs Git and Bun when missing, downloads Molfar Vertep next to itself, offers each new release before installing it (`dev` follows work in progress), builds only what changed, offers a desktop shortcut, and opens Molfar Vertep in your browser. Folder names with spaces or in any language work.
+- Fixed: an app update could freeze the whole of Molfar Vertep on Windows. After the new files were written, deleting the update's temporary folder waited forever on a file another program held (an antivirus scanning the fresh download), and nothing answered until a restart. Temporary folders are now moved aside and deleted in the background with retries, each update gets a folder of its own, and leftovers from an interrupted update are cleaned up by the next one.
+- Fixed: workspace copies of built-in skills that were never edited kept blocking newer built-ins when the built-in itself had changed since the copy was made. Molfar Vertep now remembers every version of each built-in skill it ever shipped (`builtin-skills/.digests.json`, rebuilt with `bun scripts/skill-digests.ts`), and a copy equal to any of them is removed on start.
 
 ## 0.3.0 (2026-10-02)
 

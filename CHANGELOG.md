@@ -7,11 +7,16 @@ Versions here count from 0.1.0 and are independent of upstream's.
 
 ## Unreleased
 
+## 0.6.0 (2026-10-02)
+
+- **Apps can reach Molfar**: an official app may open Molfar on a new chat with a request typed in but unsent (`window.chrysalisShell.askMolfar`), list the installed apps (`apps()`) and switch to one (`openApp(id)`). Only trusted apps get it, only while their tab is on screen, at most one draft every 2 seconds, 4000 characters at most; an app can never send a message for you.
+- Roleplay 4.21.0 (app update) uses it: a new Home with Continue story, Create, Ask Molfar, achievements, recent chats with persona and character filters and delete, and My apps.
+
 ## 0.5.0 (2026-10-02)
 
 - **The Vertep look**: one 46 px top bar (eye logo and the VERTEP wordmark in Kurale, the tabs with an accent underline, the app's Split, Fullscreen, Plugins and Rebuild moved up from the second row, Updates and the account on the right); on phones the tabs become a segment control. Vertep (black, oxblood red accent, cyan primary buttons) is the default theme; a stored Dark or Light choice is kept.
 - **Themes of your own**: the account menu lists Vertep, Dark, Light and every valid `themes/<id>.json` in the workspace (hex colours for known tokens, on a dark or light base). `GET /v1/themes` lists them and the refused files with the reason; it is shell-only. Molfar's page follows the shell's theme. New built-in skill `shell-theme`.
-- Primary buttons use a separate `--c-cta` colour. Kurale (OFL) is self-hosted.
+- Primary buttons use a separate `--c-cta` colour. Kurale (OFL) is self-hosted. The tabs have gaps between them (phones: separate chips).
 - Roleplay 4.20.0 (app update): the Vertep theme, a labeled grouped navigation rail, sections as full pages (a drawer only over an open chat), Ukrainian navigation.
 
 ## 0.4.0 (2026-10-02)

@@ -1,5 +1,6 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
+import "./theme" // first: paints the stored theme before anything renders
 import App from "./App"
 import "./styles/shell.css"
 

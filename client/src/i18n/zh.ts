@@ -120,7 +120,6 @@ const dict = {
   "Custom (OpenAI-compatible)": "自定义（兼容 OpenAI）",
   "Custom (text completions)": "自定义（文本补全）",
   "Custom endpoint": "自定义端点",
-  "Dark mode": "深色模式",
   "Data folder": "数据文件夹",
   "Default voice (alloy, nova…)": "默认语音（alloy、nova…）",
   "Delete app": "删除应用",
@@ -191,7 +190,6 @@ const dict = {
   "Language": "语言",
   "Later": "稍后",
   "Launch": "打开",
-  "Light mode": "浅色模式",
   "Live hot reload. Always on for every app.": "实时热重载。对每个应用始终开启。",
   "Live: edits apply in place": "实时：改动即时生效",
   "Loading the Store…": "正在加载商店…",
@@ -501,6 +499,11 @@ const dict = {
   "Profile replaced. Your previous profile is saved at {path}. Reloading…": "配置文件已替换。之前的配置文件保存在 {path}。正在重新加载…",
   "MB": "MB",
   "GB": "GB",
+  "Theme": "主题",
+  "Vertep": "Vertep",
+  "Dark": "深色",
+  "Light": "浅色",
+  "VERTEP": "VERTEP",
 }
 
 export default dict

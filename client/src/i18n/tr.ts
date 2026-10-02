@@ -120,7 +120,6 @@ const dict = {
   "Custom (OpenAI-compatible)": "Özel (OpenAI uyumlu)",
   "Custom (text completions)": "Özel (metin tamamlamaları)",
   "Custom endpoint": "Özel uç nokta",
-  "Dark mode": "Koyu mod",
   "Data folder": "Veri klasörü",
   "Default voice (alloy, nova…)": "Varsayılan ses (alloy, nova…)",
   "Delete app": "Uygulamayı sil",
@@ -191,7 +190,6 @@ const dict = {
   "Language": "Dil",
   "Later": "Sonra",
   "Launch": "Aç",
-  "Light mode": "Açık mod",
   "Live hot reload. Always on for every app.": "Canlı sıcak yenileme. Her uygulama için her zaman açık.",
   "Live: edits apply in place": "Canlı: değişiklikler anında uygulanır",
   "Loading the Store…": "Mağaza yükleniyor…",
@@ -501,6 +499,11 @@ const dict = {
   "Profile replaced. Your previous profile is saved at {path}. Reloading…": "Profil değiştirildi. Önceki profilin şurada kayıtlı: {path}. Yeniden yükleniyor…",
   "MB": "MB",
   "GB": "GB",
+  "Theme": "Tema",
+  "Vertep": "Vertep",
+  "Dark": "Koyu",
+  "Light": "Açık",
+  "VERTEP": "VERTEP",
 }
 
 export default dict

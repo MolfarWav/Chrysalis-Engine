@@ -125,7 +125,6 @@ const en = {
   "Custom (OpenAI-compatible)": "",
   "Custom (text completions)": "",
   "Custom endpoint": "",
-  "Dark mode": "",
   "Data folder": "",
   "Default voice (alloy, nova…)": "",
   "Delete app": "",
@@ -197,7 +196,6 @@ const en = {
   "Language": "",
   "Later": "",
   "Launch": "",
-  "Light mode": "",
   "Live hot reload. Always on for every app.": "",
   "Live: edits apply in place": "",
   "Loading the Store…": "",
@@ -503,6 +501,11 @@ const en = {
   "Profile replaced. Your previous profile is saved at {path}. Reloading…": "",
   "MB": "",
   "GB": "",
+  "Theme": "",
+  "Vertep": "",
+  "Dark": "",
+  "Light": "",
+  "VERTEP": "",
 } as const
 
 export default en

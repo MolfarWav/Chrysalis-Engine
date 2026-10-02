@@ -120,7 +120,6 @@ const dict = {
   "Custom (OpenAI-compatible)": "사용자 지정 (OpenAI 호환)",
   "Custom (text completions)": "사용자 지정 (텍스트 완성)",
   "Custom endpoint": "사용자 지정 엔드포인트",
-  "Dark mode": "다크 모드",
   "Data folder": "데이터 폴더",
   "Default voice (alloy, nova…)": "기본 음성 (alloy, nova…)",
   "Delete app": "앱 삭제",
@@ -191,7 +190,6 @@ const dict = {
   "Language": "언어",
   "Later": "나중에",
   "Launch": "열기",
-  "Light mode": "라이트 모드",
   "Live hot reload. Always on for every app.": "실시간 핫 리로드. 모든 앱에서 항상 켜져 있습니다.",
   "Live: edits apply in place": "실시간: 편집이 즉시 적용됩니다",
   "Loading the Store…": "스토어 불러오는 중…",
@@ -501,6 +499,11 @@ const dict = {
   "Profile replaced. Your previous profile is saved at {path}. Reloading…": "프로필을 교체했습니다. 이전 프로필은 {path}에 저장되어 있습니다. 다시 불러오는 중…",
   "MB": "MB",
   "GB": "GB",
+  "Theme": "테마",
+  "Vertep": "Vertep",
+  "Dark": "다크",
+  "Light": "라이트",
+  "VERTEP": "VERTEP",
 }
 
 export default dict

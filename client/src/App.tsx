@@ -17,6 +17,7 @@ import { UpdatesDialog, useEngineRelease } from "./updates-panel"
 import type { LaunchInfo, Me, StoreApp } from "./types"
 import { StoreDialog, WelcomeApps, useStore } from "./store"
 import { tr, useLocale } from "./i18n/index"
+import { DEFAULT_THEME, THEME_KEY, applyStoredTheme, applyTheme, isBuiltinTheme, storedThemeId, type ShellTheme } from "./theme"
 
 type Tab = { id: string; kind: "agent" | "app" | "new"; name: string }
 const AGENT_TAB_ID = "__agent"
@@ -30,31 +31,6 @@ const isNewTabId = (id: string) => id.startsWith("__new")
 /** the open strip + active tab + pinned pane, so a refresh lands back where
  * you were instead of the picker (cleared by logout) */
 const SESSION_TABS_KEY = "chrysalis-session-tabs"
-
-function SunIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="8" cy="8" r="3.2" stroke="currentColor" />
-      <path
-        d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.2 3.2l1.1 1.1M11.7 11.7l1.1 1.1M12.8 3.2l-1.1 1.1M4.3 11.7l-1.1 1.1"
-        stroke="currentColor"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
-}
-
-function MoonIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M13.2 9.8A5.7 5.7 0 0 1 6.2 2.8 5.7 5.7 0 1 0 13.2 9.8Z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
 
 function Logo(props: { size?: number }) {
   return (
@@ -85,20 +61,62 @@ function MolfarAvatar(props: { size: number }) {
   )
 }
 
-export default function App() {
-  useLocale() // subscribe here so a language switch re-renders the whole shell
-  const [theme, setTheme] = useState<"light" | "dark">(prefs.get("chrysalis-theme") === "light" ? "light" : "dark")
-  useEffect(() => {
-    prefs.set("chrysalis-theme", theme)
-    document.documentElement.setAttribute("data-color-scheme", theme)
-  }, [theme])
-
-  return (
-    <Shell theme={theme} onTheme={() => setTheme(theme === "dark" ? "light" : "dark")} />
-  )
+/** The theme the shell shows, the custom ones the workspace offers, and the
+ *  calls that change either. Owned by App so the choice outlives sign-out. */
+interface ThemeControl {
+  id: string
+  themes: ShellTheme[]
+  /** fetch the workspace themes; a stored custom theme that is gone falls back */
+  load: () => Promise<void>
+  choose: (id: string) => void
 }
 
-function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
+function useThemeControl(): ThemeControl {
+  const [id, setId] = useState(storedThemeId)
+  const [themes, setThemes] = useState<ShellTheme[]>([])
+  const idRef = useRef(id)
+  const themesRef = useRef<ShellTheme[]>([])
+  const choose = useCallback((want: string, from?: ShellTheme[]) => {
+    const custom = (from ?? themesRef.current).find((t) => t.id === want)
+    const next = isBuiltinTheme(want) || custom ? want : DEFAULT_THEME
+    applyTheme(next, custom)
+    idRef.current = next
+    setId(next)
+  }, [])
+  const load = useCallback(async () => {
+    let list: ShellTheme[]
+    try {
+      list = (await api<{ themes: ShellTheme[] }>("GET", "/v1/themes")).themes ?? []
+    } catch {
+      return // not signed in or offline: keep what is painted
+    }
+    themesRef.current = list
+    setThemes(list)
+    // refresh the active custom theme (the file may have changed) or leave a
+    // deleted one for Vertep
+    if (!isBuiltinTheme(idRef.current)) choose(idRef.current, list)
+  }, [choose])
+  // another tab changed the theme: follow it
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== THEME_KEY) return
+      applyStoredTheme()
+      idRef.current = storedThemeId()
+      setId(idRef.current)
+    }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [])
+  return { id, themes, load, choose: (next) => choose(next) }
+}
+
+export default function App() {
+  useLocale() // subscribe here so a language switch re-renders the whole shell
+  const theme = useThemeControl()
+  return <Shell theme={theme} />
+}
+
+function Shell(props: { theme: ThemeControl }) {
   const [authed, setAuthed] = useState<boolean | null>(null)
   const [user, setUser] = useState<Me | null>(null)
   const [launch, setLaunch] = useState<LaunchInfo | null>(null)
@@ -145,6 +163,20 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
     setSettingsTab(tab ?? null)
     setSettingsOpen(true)
   }
+  // a strip that scrolls (phones, many tabs) keeps the active tab in view
+  const tabNavRef = useRef<HTMLElement>(null)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the active tab or the strip changes, the effect reads the DOM
+  useEffect(() => {
+    tabNavRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ inline: "nearest", block: "nearest" })
+  }, [active?.id, tabs.length])
+  // the bar's slot for the open app's toolbar buttons (see AppCanvas)
+  const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null)
+  // a stored custom theme is painted from storage right away; once signed in,
+  // the list confirms it (or sends the shell back to Vertep if the file is gone)
+  const loadThemes = props.theme.load
+  useEffect(() => {
+    if (authed === true) void loadThemes()
+  }, [authed, loadThemes])
 
   useEffect(() => {
     void (async () => {
@@ -380,20 +412,23 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
         await enter()
       }} /> : null}
       {authed === true && user ? <div className="relative flex h-full min-h-0 min-w-0 flex-1 select-none flex-col bg-deep [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text">
-          <header className="flex h-11 shrink-0 items-center gap-2 px-2 max-md:gap-1 max-md:px-1">
+          <header className="flex h-[46px] shrink-0 items-stretch gap-1 border-b border-line bg-panel pl-3 pr-2 max-md:pl-2 max-md:pr-1.5">
             <button
-              className="flex shrink-0 cursor-pointer items-center gap-2 rounded-md py-1 pl-1 pr-2 transition-colors hover:bg-hover max-md:pl-0.5 max-md:pr-1"
+              className="mr-2 flex shrink-0 cursor-pointer items-center gap-2.5 rounded-[3px] px-1 transition-colors hover:bg-hover max-md:mr-0"
               onClick={goHome}
               title={tr("Home")}
               aria-label={tr("Home")}
             >
-              <Logo />
-              <span className="text-14 font-medium text-ink max-md:hidden">Molfar Vertep</span>
+              <img src="/client/vertep-logo.svg" alt="" width={28} height={28} className="size-7 shrink-0" />
+              <span className="font-heading text-[22px] leading-none tracking-[0.2px] text-ink max-md:hidden">{tr("VERTEP")}</span>
             </button>
-            <nav className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto pt-1" aria-label={tr("Tabs")}>
+            {/* one strip for both layouts: tabs with an accent underline on
+                desktop, a compact segmented control on phones */}
+            <nav ref={tabNavRef} className="no-scrollbar flex min-w-0 flex-1 items-stretch overflow-x-auto max-md:items-center" aria-label={tr("Tabs")}>
+              <div className="flex h-full w-max items-stretch max-md:h-8 max-md:overflow-hidden max-md:rounded-[3px] max-md:border max-md:border-line">
               {tabs.map((t, i) => (
                   <div key={t.id}
-                    className="group/tab relative flex shrink-0 items-end"
+                    className="group/tab relative flex shrink-0 items-stretch max-md:border-l max-md:border-line max-md:first:border-l-0"
                     draggable={true}
                     onDragStart={() => setDragIdx(i)}
                     onDragEnd={() => setDragIdx(null)}
@@ -409,7 +444,7 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
                     }}
                   >
                     <button
-                      className="flex h-8 max-w-48 cursor-pointer select-none items-center gap-1.5 rounded-t-lg border border-b-0 border-transparent py-0 pl-2.5 pr-1.5 text-13 text-ink-muted transition-all duration-150 hover:bg-hover data-[active=true]:max-w-64 data-[active=true]:border-line data-[active=true]:bg-base data-[active=true]:pl-3 data-[active=true]:font-medium data-[active=true]:text-ink data-[dragging=true]:opacity-40"
+                      className="flex max-w-48 cursor-pointer select-none items-center gap-2 border-b-2 border-transparent py-0 pl-3.5 pr-2 font-heading text-[15px] text-ink-muted transition-colors duration-150 hover:bg-hover hover:text-ink data-[active=true]:max-w-64 data-[active=true]:border-accent data-[active=true]:bg-[linear-gradient(0deg,color-mix(in_oklab,var(--c-accent)_16%,transparent),transparent)] data-[active=true]:text-ink data-[dragging=true]:opacity-40 max-md:max-w-36 max-md:gap-1.5 max-md:border-b-0 max-md:pl-2.5 max-md:pr-1.5 max-md:text-[13px] max-md:data-[active=true]:max-w-44 max-md:data-[active=true]:shadow-[inset_0_-2px_0_var(--c-accent)]"
                       data-active={active?.id === t.id}
                       data-dragging={dragIdx === i}
                       onClick={() => {
@@ -418,12 +453,12 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
                       }}
                       title={t.name}
                     >
-                      {t.kind === "agent" ? <MolfarAvatar size={16} /> : null}
+                      {t.kind === "agent" ? <MolfarAvatar size={18} /> : null}
                       <span className="truncate">{t.name}</span>
                       <span
                         role="button"
                         aria-label={tr("Close {name}", { name: t.name })}
-                        className={"flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-ink-muted transition-all hover:bg-pressed hover:text-ink " + (active?.id === t.id ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100 pointer-coarse:opacity-100")}
+                        className={"flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-[3px] text-ink-muted transition-all hover:bg-pressed hover:text-ink " + (active?.id === t.id ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100 pointer-coarse:opacity-100 max-md:hidden")}
                         onClick={(e) => {
                           e.stopPropagation()
                           closeTab(t)
@@ -436,16 +471,21 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
                   </div>
                 ))}
               <button
-                className="mb-0.5 ml-1 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-hover hover:text-ink"
+                className="flex w-9 shrink-0 cursor-pointer items-center justify-center text-ink-muted transition-colors hover:bg-hover hover:text-ink max-md:w-8 max-md:border-l max-md:border-line"
                 onClick={openNewTab}
                 title={tr("New tab")}
+                aria-label={tr("New tab")}
               >
                 <IconSmall name="plus" />
               </button>
+              </div>
             </nav>
-            <div className="ml-auto flex items-center gap-1">
+            <div className="ml-auto flex shrink-0 items-center gap-0.5 pl-1">
+              {/* the open app's toolbar (Split, Fullscreen, Plugins, Rebuild)
+                  renders here; phones keep those actions in the account menu */}
+              <div ref={setActionsSlot} className="flex items-center gap-0.5 max-md:hidden" />
               <button
-                className="relative flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-hover hover:text-ink"
+                className="relative flex h-[30px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[3px] text-ink-muted transition-colors hover:bg-hover hover:text-ink"
                 onClick={() => setUpdatesOpen(true)}
                 title={tr("Updates")}
                 aria-label={tr("Updates")}
@@ -453,23 +493,22 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
                 <IconSmall name="download" />
                 {updatesWaiting > 0 ? <span className="absolute right-1 top-1 size-2 rounded-full bg-accent" /> : null}
               </button>
-              <UserMenu
-                username={user!.username}
-                hasAvatar={user!.hasAvatar !== false}
-                onLogout={() => void logout()}
-                theme={props.theme}
-                onTheme={props.onTheme}
-                onSettings={() => openSettings()}
-                app={active?.kind === "app" ? { id: active.id, name: active.name, onPlugins: () => openPlugins(active.id) } : null}
-              />
               <button
-                className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-hover hover:text-ink"
+                className="flex h-[30px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[3px] text-ink-muted transition-colors hover:bg-hover hover:text-ink max-md:hidden"
                 onClick={() => openSettings()}
                 title={tr("Settings")}
                 aria-label={tr("Settings")}
               >
                 <IconSmall name="settings-gear" />
               </button>
+              <UserMenu
+                username={user!.username}
+                hasAvatar={user!.hasAvatar !== false}
+                onLogout={() => void logout()}
+                theme={props.theme}
+                onSettings={() => openSettings()}
+                app={active?.kind === "app" ? { id: active.id, name: active.name, onPlugins: () => openPlugins(active.id) } : null}
+              />
             </div>
           </header>
           <main
@@ -528,6 +567,8 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
                   }}
                 >
                   <AppCanvas
+                    actionsSlot={actionsSlot}
+                    showActions={active?.kind === "app" ? active.id === t.id : pinned?.id === t.id}
                     username={user.username}
                     tab={t}
                     trusted={launch?.apps.find((a) => a.id === t.id)?.official === true}
@@ -580,8 +621,7 @@ function UserMenu(props: {
   username: string
   hasAvatar: boolean
   onLogout: () => void
-  theme: "light" | "dark"
-  onTheme: () => void
+  theme: ThemeControl
   onSettings: () => void
   app: { id: string; name: string; onPlugins: () => void } | null
 }) {
@@ -595,16 +635,23 @@ function UserMenu(props: {
       const r = btnRef.current.getBoundingClientRect()
       setPos({ top: `${r.bottom + 6}px`, right: `${window.innerWidth - r.right}px` })
     }
+    if (!open) void props.theme.load() // pick up themes added since the shell started
     setOpen(!open)
   }
+  const themeChoices: { id: string; name: string }[] = [
+    { id: "vertep", name: tr("Vertep") },
+    { id: "dark", name: tr("Dark") },
+    { id: "light", name: tr("Light") },
+    ...props.theme.themes.map((t) => ({ id: t.id, name: t.name })),
+  ]
   return (
     <div className="shrink-0">
       <Button
         ref={btnRef}
         variant="ghost-muted"
         size="normal"
-        style={{ height: "28px" }}
-        className="max-w-[140px] gap-1"
+        style={{ height: "32px" }}
+        className="ml-1 max-w-[160px] gap-1.5 rounded-[3px] border border-line px-2 font-heading max-md:ml-0 max-md:gap-1 max-md:px-1.5"
         title={tr("Account")}
         aria-haspopup="menu"
         aria-expanded={open ? "true" : "false"}
@@ -613,12 +660,12 @@ function UserMenu(props: {
         {avatarOk && props.hasAvatar ? <img
             src={`/v1/auth/avatar/${encodeURIComponent(props.username)}?v=${prefs.get("chrysalis-avatar-v") ?? "0"}`}
             alt=""
-            className="size-4 shrink-0 rounded-full object-cover"
+            className="size-5 shrink-0 rounded-[3px] object-cover"
             onError={() => setAvatarOk(false)}
-          /> : <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-pressed text-10 font-medium uppercase">
+          /> : <span className="flex size-5 shrink-0 items-center justify-center rounded-[3px] bg-accent text-11 font-semibold uppercase text-white">
               {props.username.slice(0, 1)}
             </span>}
-        <span className="truncate text-12 leading-4">{props.username}</span>
+        <span className="truncate text-13 leading-4 max-md:hidden">{props.username}</span>
         <IconSmall name="chevron-down" className="shrink-0 text-ink-muted" />
       </Button>
       {open ? createPortal(
@@ -628,7 +675,7 @@ function UserMenu(props: {
             role="menu"
             aria-label={tr("Account")}
             style={{ position: "fixed", top: pos?.top ?? "3rem", right: pos?.right ?? "1rem" }}
-            className="z-50 flex w-44 flex-col rounded-lg border border-line bg-panel-raised p-1 shadow-[var(--s-raised)]"
+            className="z-50 flex w-52 flex-col rounded-lg border border-line bg-panel-raised p-1 shadow-[var(--s-raised)]"
           >
             {app ? <div className="flex flex-col border-b border-line pb-1 mb-1 md:hidden">
                 <div className="truncate px-2 py-1.5 text-11 text-ink-muted">{app.name}</div>
@@ -682,17 +729,27 @@ function UserMenu(props: {
               </span>
               {tr("Settings")}
             </button>
-            <button
-              role="menuitem"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-13 transition-colors hover:bg-hover"
-              onClick={() => {
-                setOpen(false)
-                props.onTheme()
-              }}
-            >
-              <span className="flex size-4 shrink-0 items-center justify-center">{props.theme === "dark" ? <SunIcon /> : <MoonIcon />}</span>
-              {props.theme === "dark" ? tr("Light mode") : tr("Dark mode")}
-            </button>
+            <div role="group" aria-label={tr("Theme")} className="my-1 flex flex-col border-y border-line py-1">
+              <div className="px-2 py-1 text-11 text-ink-muted">{tr("Theme")}</div>
+              {themeChoices.map((c) => {
+                const on = props.theme.id === c.id
+                return (
+                  <button
+                    key={c.id}
+                    role="menuitemradio"
+                    aria-checked={on}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-13 transition-colors hover:bg-hover"
+                    onClick={() => {
+                      props.theme.choose(c.id)
+                      setOpen(false)
+                    }}
+                  >
+                    <span className="flex size-4 shrink-0 items-center justify-center text-accent">{on ? <IconSmall name="check" /> : null}</span>
+                    <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                  </button>
+                )
+              })}
+            </div>
             <button
               role="menuitem"
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-13 transition-colors hover:bg-hover"
@@ -712,7 +769,21 @@ function UserMenu(props: {
   )
 }
 
-function AppCanvas(props: { username: string; tab: Tab; trusted?: boolean; onAskAgent: (prompt: string) => void; split?: boolean; onSplit: () => void; onPlugins: () => void }) {
+/** Look of a text button in the shell bar (the app toolbar's actions). */
+const BAR_BUTTON = "flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 rounded-[3px] border border-transparent px-2 font-heading text-13 text-ink-muted transition-colors hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+
+function AppCanvas(props: {
+  username: string
+  tab: Tab
+  trusted?: boolean
+  onAskAgent: (prompt: string) => void
+  split?: boolean
+  onSplit: () => void
+  onPlugins: () => void
+  /** the bar's slot for this pane's toolbar buttons, and whether this pane owns it */
+  actionsSlot: HTMLElement | null
+  showActions: boolean
+}) {
   const frameRef = useRef<HTMLIFrameElement>(null)
   const [build, setBuild] = useState<AppBuildStatus>({ phase: "checking" })
   const [loaded, setLoaded] = useState(false)
@@ -792,44 +863,47 @@ function AppCanvas(props: { username: string; tab: Tab; trusted?: boolean; onAsk
     // phones: the app fills the pane edge to edge under the one shell bar;
     // this toolbar's actions ride in the account menu there (see UserMenu)
     <div className="m-2 ml-0 flex min-h-0 min-w-0 flex-1 flex-col self-stretch overflow-hidden rounded-[10px] bg-base shadow-[var(--s-raised)] max-md:m-0 max-md:rounded-none max-md:border-t max-md:border-line max-md:shadow-none">
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line px-2 max-md:hidden">
-        <span className="truncate px-1 text-13 text-ink-muted">{props.tab.name}</span>
-        <div className="ml-auto flex items-center gap-0.5">
+      {/* the app toolbar lives in the shell bar (one row): this pane renders
+          its buttons into the bar's slot while it is the one in charge. Phones
+          carry the same actions in the account menu (see UserMenu). */}
+      {props.actionsSlot && props.showActions ? createPortal(
+        <>
           <button
-            className={"flex items-center gap-1 rounded-md px-2 py-1 text-12 transition-colors hover:bg-hover hover:text-ink " + (props.split ? "text-ink" : "text-ink-muted")}
+            className={BAR_BUTTON + (props.split ? " text-ink!" : "")}
             title={props.split ? tr("Unsplit, back to full width") : tr("Split right: Molfar left, this app live on the right")}
             onClick={props.onSplit}
           >
             <IconSmall name="split" size="small" />
-            <span>{props.split ? tr("Unsplit") : tr("Split")}</span>
+            <span className="max-lg:hidden">{props.split ? tr("Unsplit") : tr("Split")}</span>
           </button>
           <button
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-12 text-ink-muted transition-colors hover:bg-hover hover:text-ink"
+            className={BAR_BUTTON}
             title={tr("Open in a full browser tab (installable as an app)")}
             onClick={() => window.open(`/standalone?app=${encodeURIComponent(props.tab.id)}`, "_blank", "noopener")}
           >
             <IconSmall name="outline-square-arrow" size="small" />
-            <span>{tr("Fullscreen")}</span>
+            <span className="max-lg:hidden">{tr("Fullscreen")}</span>
           </button>
           <button
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-12 text-ink-muted transition-colors hover:bg-hover hover:text-ink"
+            className={BAR_BUTTON}
             title={tr("Plugins for this app: import from git, permissions, removal")}
             onClick={props.onPlugins}
           >
             <Icon name="providers" size="small" />
-            <span>{tr("Plugins")}</span>
+            <span className="max-lg:hidden">{tr("Plugins")}</span>
           </button>
           <button
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-12 text-ink-muted transition-colors hover:bg-hover hover:text-ink disabled:opacity-50"
+            className={BAR_BUTTON}
             title={tr("Rebuild this app now")}
             disabled={build.phase === "building" || build.phase === "checking"}
             onClick={() => void window.ChrysalisBuilder?.rebuild(props.tab.id).catch(() => undefined)}
           >
             <Icon name="rebuild" size="small" />
-            <span>{build.phase === "building" || build.phase === "checking" ? tr("Building…") : tr("Rebuild")}</span>
+            <span className="max-lg:hidden">{build.phase === "building" || build.phase === "checking" ? tr("Building…") : tr("Rebuild")}</span>
           </button>
-        </div>
-      </div>
+        </>,
+        props.actionsSlot,
+      ) : null}
       {runtimeError ? (
         <div className="flex shrink-0 items-center gap-2 border-b border-danger/30 bg-danger-soft/10 px-3 py-1.5 text-12">
           <span className="min-w-0 flex-1 truncate text-ink" title={runtimeError}>{runtimeError.split("\n")[0]}</span>

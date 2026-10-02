@@ -120,7 +120,6 @@ const dict = {
   "Custom (OpenAI-compatible)": "カスタム（OpenAI 互換）",
   "Custom (text completions)": "カスタム（テキスト補完）",
   "Custom endpoint": "カスタムエンドポイント",
-  "Dark mode": "ダークモード",
   "Data folder": "データフォルダー",
   "Default voice (alloy, nova…)": "既定の音声（alloy、nova…）",
   "Delete app": "アプリを削除",
@@ -191,7 +190,6 @@ const dict = {
   "Language": "言語",
   "Later": "後で",
   "Launch": "開く",
-  "Light mode": "ライトモード",
   "Live hot reload. Always on for every app.": "ライブホットリロード。すべてのアプリで常に有効です。",
   "Live: edits apply in place": "ライブ: 編集は即時反映",
   "Loading the Store…": "ストアを読み込み中…",
@@ -501,6 +499,11 @@ const dict = {
   "Profile replaced. Your previous profile is saved at {path}. Reloading…": "プロフィールを置き換えました。以前のプロフィールは {path} に保存されています。再読み込みします…",
   "MB": "MB",
   "GB": "GB",
+  "Theme": "テーマ",
+  "Vertep": "Vertep",
+  "Dark": "ダーク",
+  "Light": "ライト",
+  "VERTEP": "VERTEP",
 }
 
 export default dict

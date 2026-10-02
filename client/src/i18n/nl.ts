@@ -120,7 +120,6 @@ const dict = {
   "Custom (OpenAI-compatible)": "Aangepast (OpenAI-compatibel)",
   "Custom (text completions)": "Aangepast (tekst-completions)",
   "Custom endpoint": "Aangepast endpoint",
-  "Dark mode": "Donkere modus",
   "Data folder": "Gegevensmap",
   "Default voice (alloy, nova…)": "Standaardstem (alloy, nova…)",
   "Delete app": "App verwijderen",
@@ -191,7 +190,6 @@ const dict = {
   "Language": "Taal",
   "Later": "Later",
   "Launch": "Starten",
-  "Light mode": "Lichte modus",
   "Live hot reload. Always on for every app.": "Live hot reload. Altijd aan voor elke app.",
   "Live: edits apply in place": "Live: wijzigingen worden direct toegepast",
   "Loading the Store…": "Store laden…",
@@ -501,6 +499,11 @@ const dict = {
   "Profile replaced. Your previous profile is saved at {path}. Reloading…": "Profiel vervangen. Je vorige profiel is bewaard in {path}. Opnieuw laden…",
   "MB": "MB",
   "GB": "GB",
+  "Theme": "Thema",
+  "Vertep": "Vertep",
+  "Dark": "Donker",
+  "Light": "Licht",
+  "VERTEP": "VERTEP",
 }
 
 export default dict

@@ -42,9 +42,9 @@
 [data-variant="neutral"]:not(:disabled):active { background: var(--c-pressed); }
 
 [data-variant="primary"] {
-  background: var(--c-accent);
+  background: var(--c-cta);
   border-color: transparent;
-  color: var(--c-ink-inverse);
+  color: var(--c-cta-ink);
 }
 [data-variant="primary"]:not(:disabled):hover { filter: brightness(1.08); }
 [data-variant="primary"]:not(:disabled):active { filter: brightness(0.95); }

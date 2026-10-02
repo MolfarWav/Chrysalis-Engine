@@ -123,7 +123,6 @@ const dict = {
   "Custom (OpenAI-compatible)": "Власний (сумісний з OpenAI)",
   "Custom (text completions)": "Власний (text completions)",
   "Custom endpoint": "Власна кінцева точка",
-  "Dark mode": "Темний режим",
   "Data folder": "Папка даних",
   "Default voice (alloy, nova…)": "Голос за замовчуванням (alloy, nova…)",
   "Delete app": "Видалити застосунок",
@@ -195,7 +194,6 @@ const dict = {
   "Language": "Мова",
   "Later": "Пізніше",
   "Launch": "Запустити",
-  "Light mode": "Світлий режим",
   "Live hot reload. Always on for every app.": "Гаряче перезавантаження наживо. Завжди ввімкнено для кожного застосунку.",
   "Live: edits apply in place": "Наживо: зміни застосовуються на місці",
   "Loading the Store…": "Завантаження магазину…",
@@ -501,6 +499,11 @@ const dict = {
   "Profile replaced. Your previous profile is saved at {path}. Reloading…": "Профіль замінено. Попередній профіль збережено в {path}. Перезавантаження…",
   "MB": "МБ",
   "GB": "ГБ",
+  "Theme": "Тема",
+  "Vertep": "Вертеп",
+  "Dark": "Темна",
+  "Light": "Світла",
+  "VERTEP": "ВЕРТЕП",
 }
 
 export default dict

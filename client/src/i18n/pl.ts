@@ -120,7 +120,6 @@ const dict = {
   "Custom (OpenAI-compatible)": "Własne (zgodne z OpenAI)",
   "Custom (text completions)": "Własne (text completions)",
   "Custom endpoint": "Własny endpoint",
-  "Dark mode": "Tryb ciemny",
   "Data folder": "Folder danych",
   "Default voice (alloy, nova…)": "Domyślny głos (alloy, nova…)",
   "Delete app": "Usuń aplikację",
@@ -191,7 +190,6 @@ const dict = {
   "Language": "Język",
   "Later": "Później",
   "Launch": "Otwórz",
-  "Light mode": "Tryb jasny",
   "Live hot reload. Always on for every app.": "Przeładowanie na żywo. Zawsze włączone dla każdej aplikacji.",
   "Live: edits apply in place": "Na żywo: zmiany działają od razu",
   "Loading the Store…": "Wczytywanie Store…",
@@ -501,6 +499,11 @@ const dict = {
   "Profile replaced. Your previous profile is saved at {path}. Reloading…": "Profil zastąpiony. Poprzedni profil zapisano w {path}. Ponowne ładowanie…",
   "MB": "MB",
   "GB": "GB",
+  "Theme": "Motyw",
+  "Vertep": "Vertep",
+  "Dark": "Ciemny",
+  "Light": "Jasny",
+  "VERTEP": "VERTEP",
 }
 
 export default dict

@@ -4,7 +4,39 @@
  * `@theme inline` keeps the utilities pointing at the variables (rather than
  * baking values in), which is what makes the runtime toggle work. */
 
+/* Vertep is the default: :root carries its values, so the shell is right even
+ * before theme.ts has set the attribute. Dark and Light follow and win by
+ * order (same specificity). Custom themes start from dark or light and
+ * override single tokens inline. */
 :root,
+[data-color-scheme="vertep"] {
+  --c-deep: #07080b;
+  --c-base: #0b0c11;
+  --c-panel: #0e1016;
+  --c-contrast: #f0e9dc;
+  --c-ink: #f0e9dc;
+  --c-ink-muted: #a9b1c4;
+  --c-ink-faint: #6f7689;
+  --c-ink-inverse: #07080b;
+  --c-accent: #e2213a;
+  --c-cta: #39d5ff;
+  --c-cta-ink: #07080b;
+  --c-line: #2a2f3d;
+  --c-line-focus: #e2213a;
+  --c-danger: #f2777a;
+  --c-success: #7fd18b;
+  --c-warning: #e3b341;
+  --c-warning-soft: rgb(227 179 65 / 0.14);
+  --c-danger-soft: rgb(242 119 122 / 0.16);
+  --c-panel-raised: #12141c;
+  --c-hover: rgb(240 233 220 / 0.06);
+  --c-pressed: rgb(240 233 220 / 0.1);
+  --c-icon: #a9b1c4;
+  --c-icon-muted: #6f7689;
+  --c-icon-contrast: #07080b;
+  --s-raised: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.3);
+}
+
 [data-color-scheme="dark"] {
   --c-deep: #0b0b0d;
   --c-base: #121214;
@@ -15,6 +47,8 @@
   --c-ink-faint: #6e6e78;
   --c-ink-inverse: #0b0b0d;
   --c-accent: #7aa2f7;
+  --c-cta: #7aa2f7;
+  --c-cta-ink: #0b0b0d;
   --c-line: #26262c;
   --c-line-focus: #4d7fd6;
   --c-danger: #f2777a;
@@ -41,6 +75,8 @@
   --c-ink-faint: #8a8a94;
   --c-ink-inverse: #ffffff;
   --c-accent: #2f5fbf;
+  --c-cta: #2f5fbf;
+  --c-cta-ink: #ffffff;
   --c-line: #e2e2e7;
   --c-line-focus: #2f5fbf;
   --c-danger: #c4373a;
@@ -67,6 +103,8 @@
   --color-ink-faint: var(--c-ink-faint);
   --color-ink-inverse: var(--c-ink-inverse);
   --color-accent: var(--c-accent);
+  --color-cta: var(--c-cta);
+  --color-cta-ink: var(--c-cta-ink);
   --color-line: var(--c-line);
   --color-line-focus: var(--c-line-focus);
   --color-danger: var(--c-danger);
@@ -82,6 +120,8 @@
   --color-icon-contrast: var(--c-icon-contrast);
 
   --shadow-raised: var(--s-raised);
+
+  --font-heading: var(--font-family-heading);
 
   --text-9: 9px;
   --text-10: 10px;

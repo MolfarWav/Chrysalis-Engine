@@ -146,6 +146,37 @@
   --sidebar-ring: oklch(0.552 0.016 285.938);
 }
 
+/* Vertep: the shell's default look (client/src/styles/tokens.css). Always sits
+   on top of .dark, which it extends, and must stay after it. */
+.vertep {
+  --background: #07080b;
+  --foreground: #f0e9dc;
+  --card: #0b0c11;
+  --card-foreground: #f0e9dc;
+  --popover: #0b0c11;
+  --popover-foreground: #f0e9dc;
+  --secondary: #12141c;
+  --secondary-foreground: #f0e9dc;
+  --muted: #12141c;
+  --muted-foreground: #a9b1c4;
+  --accent: #12141c;
+  --accent-foreground: #f0e9dc;
+  --primary: #39d5ff;
+  --primary-foreground: #07080b;
+  --border: #2a2f3d;
+  --input: #2a2f3d;
+  --ring: #e2213a;
+  --destructive: #f2777a;
+  --sidebar: #0b0c11;
+  --sidebar-foreground: #f0e9dc;
+  --sidebar-primary: #e2213a;
+  --sidebar-primary-foreground: #f0e9dc;
+  --sidebar-accent: #12141c;
+  --sidebar-accent-foreground: #f0e9dc;
+  --sidebar-border: #2a2f3d;
+  --sidebar-ring: #e2213a;
+}
+
 @layer base {
   * {
     @apply border-border;

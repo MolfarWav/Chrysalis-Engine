@@ -9,9 +9,11 @@ import { IconSmall } from "./ui/icon"
 import { Icon } from "./ui/icon"
 import { IconButton } from "./ui/button"
 import { Button } from "./ui/button"
-import { api, prefs, authApi, appPluginsApi, confirmAppFile, exportApp, previewAppFile, updatesApi, type AppImportPreview, type AuthUser } from "./api"
+import { api, prefs, authApi, appPluginsApi, confirmAppFile, exportApp, previewAppFile, type AppImportPreview, type AuthUser, type EngineRelease } from "./api"
 import { SettingsBody, type TabValue } from "./settings"
 import { EngineUpdateButton } from "./server-settings"
+import { AppUpdateBanner, useAppUpdate, useAppUpdates, type AppUpdates } from "./app-update"
+import { UpdatesDialog, useEngineRelease } from "./updates-panel"
 import type { LaunchInfo, Me, StoreApp } from "./types"
 import { StoreDialog, WelcomeApps, useStore } from "./store"
 import { tr, useLocale } from "./i18n/index"
@@ -98,6 +100,13 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
   const [sessionLoaded, setSessionLoaded] = useState(false)
   const [settingsTab, setSettingsTab] = useState<TabValue | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // update checks run once per shell start (and when the app list changes),
+  // then on "Check now" or after an update: the launcher badges, the top-bar
+  // badge and the Updates panel all read these
+  const [updatesOpen, setUpdatesOpen] = useState(false)
+  const appUpdates = useAppUpdates(launch)
+  const engineRelease = useEngineRelease(launch?.engine?.admin === true)
+  const updatesWaiting = appUpdates.count + (engineRelease.release?.newer ? 1 : 0)
   // one plugins dialog for the whole shell: the app toolbar opens it on
   // desktop, the account menu on phones. The id outlives the close so the
   // exit animation still shows the app it was about.
@@ -180,6 +189,8 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
     }
     setSessionLoaded(true)
   }
+
+  const refreshLaunch = () => api<LaunchInfo>("GET", "/v1/launch").then(setLaunch).catch(() => undefined)
 
   async function login(username: string, password?: string) {
     await authApi.login(username, password)
@@ -286,6 +297,12 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
     setTabs([...tabs, t])
     setActive(t)
   }
+  /** The logo: the launcher. Its New tab when one is open, else a fresh one. */
+  function goHome() {
+    const t = tabs.find((x) => x.kind === "new")
+    if (t) focusTab(t)
+    else openNewTab()
+  }
   /** Closing the active tab lands on its neighbor — or the picker when the
    * strip is empty (the launch screen IS the no-tabs state). */
   function closeTab(t: Tab) {
@@ -348,10 +365,15 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
       }} /> : null}
       {authed === true && user ? <div className="relative flex h-full min-h-0 min-w-0 flex-1 select-none flex-col bg-deep [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text">
           <header className="flex h-11 shrink-0 items-center gap-2 px-2 max-md:gap-1 max-md:px-1">
-            <div className="flex items-center gap-2 pl-1 max-md:pl-0.5">
+            <button
+              className="flex shrink-0 cursor-pointer items-center gap-2 rounded-md py-1 pl-1 pr-2 transition-colors hover:bg-hover max-md:pl-0.5 max-md:pr-1"
+              onClick={goHome}
+              title={tr("Home")}
+              aria-label={tr("Home")}
+            >
               <Logo />
               <span className="text-14 font-medium text-ink max-md:hidden">Molfar Vertep</span>
-            </div>
+            </button>
             <nav className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto pt-1" aria-label={tr("Tabs")}>
               {tabs.map((t, i) => (
                   <div key={t.id}
@@ -405,6 +427,15 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
               </button>
             </nav>
             <div className="ml-auto flex items-center gap-1">
+              <button
+                className="relative flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-hover hover:text-ink"
+                onClick={() => setUpdatesOpen(true)}
+                title={tr("Updates")}
+                aria-label={tr("Updates")}
+              >
+                <IconSmall name="download" />
+                {updatesWaiting > 0 ? <span className="absolute right-1 top-1 size-2 rounded-full bg-accent" /> : null}
+              </button>
               <UserMenu
                 username={user!.username}
                 hasAvatar={user!.hasAvatar !== false}
@@ -439,7 +470,9 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
                 onAgent={openAgent}
                 onAskAgent={askAgent}
                 onApp={openApp}
-                onRefresh={() => api<LaunchInfo>("GET", "/v1/launch").then(setLaunch).catch(() => undefined)}
+                updates={appUpdates}
+                engineRelease={engineRelease.release}
+                onRefresh={refreshLaunch}
                 onCloseTab={(id) => {
                   const t = tabs.find((x) => x.id === id)
                   if (t) closeTab(t)
@@ -489,6 +522,18 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
                 </div>
               ))}
           </main>
+          <UpdatesDialog
+            open={updatesOpen}
+            onClose={() => setUpdatesOpen(false)}
+            launch={launch}
+            updates={appUpdates}
+            engine={engineRelease}
+            onUpdated={() => {
+              void appUpdates.refresh()
+              void refreshLaunch()
+            }}
+            onAskAgent={askAgent}
+          />
           <AppPluginsDialog appId={pluginsFor} open={pluginsOpen} onClose={() => setPluginsOpen(false)} />
         </div> : null}
       {user ? (
@@ -1081,22 +1126,6 @@ type TreeNode = TreeDir | TreeFile
 /** The project's community server, linked from the launcher footer. */
 const COMMUNITY_URL = "https://discord.gg/maFVqyeD4Q"
 
-/** Which of the account's apps have newer commits upstream, for the launcher
- *  badges. One engine-side check per app with an install source, refreshed
- *  after an update lands. */
-function useAppUpdates(launch: LaunchInfo | null) {
-  const key = (launch?.apps ?? []).map((a) => `${a.id}:${a.repository ?? ""}`).join(",")
-  const updates = useResource(() => updatesApi.list(), [key])
-  const ids = new Set((updates.data?.apps ?? []).filter((u) => u.available).map((u) => u.id))
-  const refresh = () => {
-    void updatesApi
-      .list(true)
-      .then((r) => updates.mutate(r))
-      .catch(() => undefined)
-  }
-  return { has: (id: string) => ids.has(id), refresh }
-}
-
 function LaunchPicker(props: {
   launch: LaunchInfo | null
   onAgent: () => void
@@ -1104,6 +1133,8 @@ function LaunchPicker(props: {
   onApp: (id: string) => void
   onRefresh: () => Promise<unknown>
   onCloseTab: (id: string) => void
+  updates: AppUpdates
+  engineRelease: EngineRelease | null
 }) {
   const [creating, setCreating] = useState(false)
   const [importing, setImporting] = useState<{ from: StoreApp | null } | null>(null)
@@ -1112,7 +1143,7 @@ function LaunchPicker(props: {
   const [browsing, setBrowsing] = useState(false)
   const [welcomeSkipped, setWelcomeSkipped] = useState(false)
   const store = useStore()
-  const updates = useAppUpdates(props.launch)
+  const updates = props.updates
   const apps = props.launch?.apps ?? []
   const welcome = !!props.launch && apps.length === 0 && !welcomeSkipped
 
@@ -1270,7 +1301,7 @@ function LaunchPicker(props: {
                   onLaunch={() => props.onApp(selApp.id)}
                   onUpdated={() => {
                     void props.onRefresh()
-                    updates.refresh()
+                    void updates.refresh()
                   }}
                   onAskAgent={props.onAskAgent}
                 />
@@ -1284,7 +1315,7 @@ function LaunchPicker(props: {
       {props.launch?.engine ? (
           <div className="flex items-center gap-2 px-1 pb-1 pt-0.5 text-11 text-ink-faint">
             <span>{tr("Molfar Vertep v{version}", { version: props.launch.engine.version })}</span>
-            {props.launch.engine.admin ? <EngineUpdateButton /> : null}
+            {props.launch.engine.admin ? <EngineUpdateButton release={props.engineRelease} /> : null}
             {props.launch.engine.repository ? <a
                 href={props.launch.engine.repository}
                 target="_blank"
@@ -1359,25 +1390,6 @@ function LaunchPicker(props: {
 /** Right-hand pane of the launcher: what the app is made of (read-only folder
  *  hierarchy from the engine) plus the Launch action. Git-imported apps also
  *  get an update check against their repository and a link out to it. */
-type Conflict = { path: string; reason: string }
-type UpdateStrategy = "merge" | "mine" | "theirs" | "agent"
-type UpdateReply = {
-  status?: "applied" | "conflicts" | "current"
-  from?: string
-  to?: string
-  strategy?: UpdateStrategy
-  merged?: string[]
-  conflicts?: Conflict[]
-  agentPrompt?: string
-  needsDepConfirm?: boolean
-  head?: string
-  deps?: { added: { name: string; spec: string }[]; changed: { name: string; spec: string; was: string }[]; removed: string[]; nonRegistry: string[] }
-  permissions?: { id: string; name: string; added: string[]; hosts: string[] }[]
-  /** plugins whose data upgrade failed; it is tried again when the app opens */
-  upgradeFailed?: { plugin: string; error: string }[]
-  warnings?: string[]
-}
-
 function AppDetail(props: {
   appId: string
   repository: string | null
@@ -1409,99 +1421,15 @@ function AppDetail(props: {
       setExporting(false)
     }
   }
-  const [updates, setUpdates] = useState<
-    | { state: "idle" }
-    | { state: "checking" }
-    | { state: "current" }
-    | { state: "available"; version: string | null; remoteHead: string | null; modified: boolean | null; engine: string | null; engineVersion: string | null }
-    | { state: "updating" }
-    | { state: "conflicts"; from: string; to: string; conflicts: Conflict[] }
-    | { state: "applied"; to: string; strategy: UpdateStrategy; merged: number; conflicts: number; problems: string[] }
-    | {
-        state: "dep-review"
-        strategy: UpdateStrategy
-        head: string | null
-        added: { name: string; spec: string }[]
-        changed: { name: string; spec: string; was: string }[]
-        removed: string[]
-        nonRegistry: string[]
-        permissions: { id: string; name: string; added: string[]; hosts: string[] }[]
-      }
-    | { state: "error"; message: string }
-  >({ state: "idle" })
-  const canUpdate = props.official || !!props.repository
-
-  const checkUpdates = async () => {
-    setUpdates({ state: "checking" })
-    try {
-      const r = await api<{
-        supported?: boolean
-        upToDate?: boolean
-        available?: string | null
-        remoteHead?: string | null
-        modified?: boolean | null
-        engineOk?: boolean
-        engine?: string | null
-        engineVersion?: string
-        error?: string
-      }>("GET", `/v1/apps/${encodeURIComponent(props.appId)}/updates`)
-      if (!r.supported) setUpdates({ state: "error", message: tr("This app has no update source.") })
-      else if (r.error) setUpdates({ state: "error", message: r.error })
-      else if (r.upToDate) setUpdates({ state: "current" })
-      else
-        setUpdates({
-          state: "available",
-          version: r.available ?? null,
-          remoteHead: r.remoteHead ?? null,
-          modified: r.modified ?? null,
-          engine: r.engineOk === false ? r.engine ?? null : null,
-          engineVersion: r.engineVersion ?? null,
-        })
-    } catch (e: any) {
-      setUpdates({ state: "error", message: e.message ?? String(e) })
-    }
-  }
-
-  const runUpdate = async (strategy: UpdateStrategy = "merge", reviewed: { head: string | null } | null = null) => {
-    setUpdates({ state: "updating" })
-    try {
-      const r = await api<UpdateReply>("POST", `/v1/apps/${encodeURIComponent(props.appId)}/update`, {
-        strategy,
-        ...(reviewed ? { confirmDeps: true, ...(reviewed.head ? { head: reviewed.head } : {}) } : {}),
-      })
-      if (r.needsDepConfirm) {
-        setUpdates({
-          state: "dep-review",
-          strategy,
-          head: r.head ?? null,
-          added: r.deps?.added ?? [],
-          changed: r.deps?.changed ?? [],
-          removed: r.deps?.removed ?? [],
-          nonRegistry: r.deps?.nonRegistry ?? [],
-          permissions: r.permissions ?? [],
-        })
-        return
-      }
-      if (r.status === "conflicts") {
-        setUpdates({ state: "conflicts", from: r.from ?? "", to: r.to ?? "", conflicts: r.conflicts ?? [] })
-        return
-      }
+  const update = useAppUpdate(props.appId, {
+    onUpdated: async () => {
       await detail.refetch()
       props.onUpdated()
-      if (r.status === "current") {
-        setUpdates({ state: "current" })
-        return
-      }
-      const problems = [
-        ...(r.upgradeFailed?.length ? [tr("Some of its data was not upgraded yet and will be tried again when the app opens: {plugins}", { plugins: r.upgradeFailed.map((f) => `${f.plugin} (${f.error})`).join(", ") })] : []),
-        ...(r.warnings ?? []),
-      ]
-      setUpdates({ state: "applied", to: r.to ?? "", strategy, merged: r.merged?.length ?? 0, conflicts: r.conflicts?.length ?? 0, problems })
-      if (r.agentPrompt) props.onAskAgent(r.agentPrompt)
-    } catch (e: any) {
-      setUpdates({ state: "error", message: e.message ?? String(e) })
-    }
-  }
+    },
+    onAskAgent: props.onAskAgent,
+  })
+  const updates = update.state
+  const canUpdate = props.official || !!props.repository
 
   // the check is automatic and harmless (nothing local moves without an
   // explicit button); the UPDATE itself never is
@@ -1510,8 +1438,8 @@ function AppDetail(props: {
     if (!detail.data || !canUpdate) return
     if (checkedFor === props.appId) return
     setCheckedFor(props.appId)
-    void checkUpdates()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- checkUpdates reads current state
+    void update.check()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- check reads current state
   }, [detail.data, canUpdate, props.appId, checkedFor])
 
   // tree starts fully collapsed — only the top-level entries show; expand on demand
@@ -1576,7 +1504,7 @@ function AppDetail(props: {
               variant="ghost-muted"
               size="small"
               disabled={updates.state === "checking" || updates.state === "updating"}
-              onClick={() => void checkUpdates()}
+              onClick={() => void update.check()}
             >
               {updates.state === "checking"
                 ? tr("Checking…")
@@ -1595,108 +1523,7 @@ function AppDetail(props: {
         </div>
       </div>
       {exportErr ? <div className="border-b border-line px-4 py-1.5 text-11 text-danger">{tr("Export failed: {message}", { message: exportErr })}</div> : null}
-      {updates.state === "available" ? <div className="flex flex-col gap-1.5 border-b border-line bg-warning-soft/10 px-4 py-2 text-12">
-          <div className="flex items-center gap-2">
-            <span className="flex-1 text-ink">
-              {updates.version
-                ? tr("v{version} is available.", { version: updates.version })
-                : updates.remoteHead
-                  ? tr("The repository has new commits ({head}).", { head: updates.remoteHead.slice(0, 10) })
-                  : tr("The repository has new commits.")}
-              {updates.modified ? " " + tr("Your own edits are merged in.") : ""}{" "}
-              {tr("Your data is kept.")}
-            </span>
-            {!updates.engine ? <Button variant="neutral" size="small" onClick={() => void runUpdate()}>
-                {tr("Update")}
-              </Button> : null}
-          </div>
-          {updates.engine ? <p className="text-11 text-ink-muted">
-              {tr("Needs Chrysalis engine {engine}. This engine is {current}.", { engine: updates.engine, current: "v" + updates.engineVersion })}
-            </p> : null}
-        </div> : null}
-      {updates.state === "conflicts" ? <div className="flex flex-col gap-2 border-b border-line bg-warning-soft/10 px-4 py-2.5 text-12">
-          <p className="text-12 text-ink">
-            {tr("Your edits overlap with v{version} in {files}. Nothing has changed yet.", { version: updates.to, files: updates.conflicts.length === 1 ? tr("1 file") : tr("{n} files", { n: updates.conflicts.length }) })}
-          </p>
-          <ul className="flex flex-col gap-0.5 font-mono text-11 text-ink-muted">
-            {updates.conflicts.map((x) => (
-              <li key={x.path} className="truncate" title={x.path}>
-                {x.path} <span className="text-ink-faint">({x.reason})</span>
-              </li>
-            ))}
-          </ul>
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="ghost-muted" size="small" onClick={() => void runUpdate("mine")} title={tr("The update lands everywhere else; where it overlaps, your version stays")}>
-              {tr("Keep mine")}
-            </Button>
-            <Button variant="ghost-muted" size="small" onClick={() => void runUpdate("theirs")} title={tr("These files get the new version; yours stays in git history")}>
-              {tr("Take update")}
-            </Button>
-            <Button variant="neutral" size="small" onClick={() => void runUpdate("agent")} title={tr("Write both sides into the files and have the agent merge them")}>
-              {tr("Ask the agent to merge")}
-            </Button>
-          </div>
-        </div> : null}
-      {updates.state === "applied" ? <div className="border-b border-line px-4 py-1.5 text-11 text-ink-faint">
-          {tr("Updated to v{version}.", { version: updates.to })}
-          {updates.merged ? " " + (updates.merged === 1 ? tr("Your edits were kept in 1 file.") : tr("Your edits were kept in {n} files.", { n: updates.merged })) : ""}
-          {updates.conflicts && updates.strategy === "mine" ? " " + tr("Where they overlapped, your version stayed.") : ""}
-          {updates.conflicts && updates.strategy === "theirs" ? " " + tr("Your overlapping edits are in git history.") : ""}
-          {updates.conflicts && updates.strategy === "agent" ? " " + tr("The agent is merging the overlaps.") : ""}
-          {updates.problems.map((problem) => <p key={problem} className="mt-1 text-danger">{problem}</p>)}
-        </div> : null}
-      {updates.state === "current" ? <div className="border-b border-line px-4 py-1.5 text-11 text-ink-faint">
-          {tr("Up to date.")}
-        </div> : null}
-      {updates.state === "dep-review" ? <div className="flex flex-col gap-2 border-b border-line bg-warning-soft/10 px-4 py-2.5 text-12">
-          <p className="text-12 text-ink">
-            {updates.added.length || updates.changed.length || updates.removed.length
-              ? tr("This update installs new packages. Nothing has changed yet.")
-              : tr("This update asks for new permissions. Nothing has changed yet.")}
-          </p>
-          <div className="flex flex-col gap-1 font-mono text-11">
-            {updates.added.map((d) => (<span key={d.name}><span className="text-success">+ {d.name}</span> <span className="text-ink-faint">{d.spec}</span></span>))}
-            {updates.changed.map((d) => (<span key={d.name}><span className="text-warning">~ {d.name}</span> <span className="text-ink-faint">{d.was} → {d.spec}</span></span>))}
-            {updates.removed.map((name) => (<span key={name} className="text-ink-faint">- {name}</span>))}
-            {updates.nonRegistry.map((entry) => (<span key={entry} className="text-danger">! {entry}</span>))}
-          </div>
-          {updates.nonRegistry.length > 0 ? <p className="text-11 text-ink-muted">
-              {tr("Some packages come from outside the public npm registry. Review them before installing.")}
-            </p> : null}
-          {updates.permissions.length > 0 ? <div className="flex flex-col gap-1">
-              {updates.permissions.map((pl) => (
-                <Fragment key={pl.id}>
-                  {pl.added.length > 0 ? <div className="flex flex-wrap items-center gap-1">
-                      <span className="text-11 text-ink">{tr("{plugin} can now use:", { plugin: pl.name })}</span>
-                      {pl.added.map((perm) => (<span key={perm} className="rounded-full bg-warning-soft/20 px-1.5 py-0.5 text-10 text-ink-muted">{perm}</span>))}
-                    </div> : null}
-                  {pl.hosts.length > 0 ? <div className="flex flex-wrap items-center gap-1">
-                      <span className="text-11 text-ink">{tr("{plugin} can now send data to:", { plugin: pl.name })}</span>
-                      {pl.hosts.map((host) => (<span key={host} className="rounded-full bg-warning-soft/20 px-1.5 py-0.5 font-mono text-10 text-ink-muted">{host}</span>))}
-                    </div> : null}
-                </Fragment>
-              ))}
-            </div> : null}
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="ghost-muted"
-              size="small"
-              onClick={() => { setUpdates({ state: "idle" }); void checkUpdates() }}
-            >
-              {tr("Cancel")}
-            </Button>
-            <Button
-              variant="danger"
-              size="small"
-              onClick={() => { if (updates.state === "dep-review") void runUpdate(updates.strategy, { head: updates.head }) }}
-            >
-              {tr("Allow and update")}
-            </Button>
-          </div>
-        </div> : null}
-      {updates.state === "error" ? <div className="border-b border-line px-4 py-1.5 text-11 text-danger">
-          {updates.message}
-        </div> : null}
+      <AppUpdateBanner update={update} />
       {!detail.loading ? <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 font-mono text-12">
           <TreeRows nodes={detail.data?.tree?.children ?? []} depth={0} open={open} toggle={toggle} />
         </div> : <div className="p-4 text-13 text-ink-faint">{tr("Reading app files…")}</div>}

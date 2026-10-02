@@ -215,10 +215,10 @@ function useInstallUpdate(release: EngineRelease) {
 }
 
 /** The launcher footer's update button for admins: installs in place where
- *  this copy can, and otherwise opens the release page. */
-export function EngineUpdateButton() {
-  const release = useResource(() => serverApi.release())
-  const r = release.data
+ *  this copy can, and otherwise opens the release page. The release comes from
+ *  the shell, which asks once. */
+export function EngineUpdateButton(props: { release: EngineRelease | null }) {
+  const r = props.release
   if (!r?.newer) return null
   return r.asset ? <InstallButton release={r} /> : (
     <a className="rounded-full bg-accent/20 px-2 py-px font-medium text-11 text-ink transition-colors hover:bg-accent/30" href={r.url} target="_blank" rel="noreferrer noopener">
@@ -258,9 +258,6 @@ function ReleaseRow(props: { info: ServerInfo }) {
       </div>
     )
   }
-  const incompatible = r.incompatibleApps?.length
-    ? <p className="text-12 leading-4 text-warning">{tr("These apps say they need a different version of Molfar Vertep and may stop working after the update: {apps}", { apps: r.incompatibleApps.map((a) => `${a.name} (${a.needs})`).join(", ") })}</p>
-    : null
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-line px-3 py-2">
       <div className="flex items-center gap-2 text-13">
@@ -268,13 +265,20 @@ function ReleaseRow(props: { info: ServerInfo }) {
         <a className="text-accent underline" href={r.url} target="_blank" rel="noreferrer">{tr("Release page")}</a>
       </div>
       {failed}
-      {incompatible}
+      <IncompatibleNote release={r} />
       {r.asset ? <InstallRow release={r} /> : <p className="text-12 leading-4 text-ink-muted">{updateHow(props.info, props.info.version.includes("-staging"))}</p>}
     </div>
   )
 }
 
-function InstallRow(props: { release: EngineRelease }) {
+/** Apps that name another engine version than the release brings. */
+export function IncompatibleNote(props: { release: EngineRelease }) {
+  const apps = props.release.incompatibleApps
+  if (!apps?.length) return null
+  return <p className="text-12 leading-4 text-warning">{tr("These apps say they need a different version of Molfar Vertep and may stop working after the update: {apps}", { apps: apps.map((a) => `${a.name} (${a.needs})`).join(", ") })}</p>
+}
+
+export function InstallRow(props: { release: EngineRelease }) {
   const install = useInstallUpdate(props.release)
   return (
     <div className="flex flex-col gap-1.5">

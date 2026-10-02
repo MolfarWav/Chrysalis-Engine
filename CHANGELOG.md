@@ -7,6 +7,13 @@ Versions here count from 0.1.0 and are independent of upstream's.
 
 ## Unreleased
 
+## 0.5.0 (2026-10-02)
+
+- **The Vertep look**: one 46 px top bar (eye logo and the VERTEP wordmark in Kurale, the tabs with an accent underline, the app's Split, Fullscreen, Plugins and Rebuild moved up from the second row, Updates and the account on the right); on phones the tabs become a segment control. Vertep (black, oxblood red accent, cyan primary buttons) is the default theme; a stored Dark or Light choice is kept.
+- **Themes of your own**: the account menu lists Vertep, Dark, Light and every valid `themes/<id>.json` in the workspace (hex colours for known tokens, on a dark or light base). `GET /v1/themes` lists them and the refused files with the reason; it is shell-only. Molfar's page follows the shell's theme. New built-in skill `shell-theme`.
+- Primary buttons use a separate `--c-cta` colour. Kurale (OFL) is self-hosted.
+- Roleplay 4.20.0 (app update): the Vertep theme, a labeled grouped navigation rail, sections as full pages (a drawer only over an open chat), Ukrainian navigation.
+
 ## 0.4.0 (2026-10-02)
 
 - **The agent is Molfar now**: an old Carpathian molfar, kind and wise, who also knows today's code. He has a name and a face across the interface (Мольфар in Ukrainian and Russian), a light touch of character in conversation (a warm word, now and then a proverb from the mountains), and none of it in code, files or commit messages. The character lives in the default instructions, so you can soften or remove it in Settings; if you never edited them, you get it on the next start.

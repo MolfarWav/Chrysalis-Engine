@@ -2747,7 +2747,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
   app.post("/v1/profile/import", async (c) => {
     if (Number(c.req.header("content-length") ?? "0") > BACKUP_MAX_BYTES) return c.json({ error: "the file is too large (over 512 MB)" }, 413);
     try {
-      return c.json(profileBackup.stageProfileImport(dataDir, new Uint8Array(await c.req.arrayBuffer())));
+      return c.json(profileBackup.stageProfileImport(dataDir, new Uint8Array(await c.req.arrayBuffer()), ENGINE_VERSION));
     } catch (e) {
       return profileError(c, e);
     }

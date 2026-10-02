@@ -10,6 +10,7 @@ Versions here count from 0.1.0 and are independent of upstream's.
 ## 0.6.0 (2026-10-02)
 
 - **Apps can reach Molfar**: an official app may open Molfar on a new chat with a request typed in but unsent (`window.chrysalisShell.askMolfar`), list the installed apps (`apps()`) and switch to one (`openApp(id)`). Only trusted apps get it, only while their tab is on screen, at most one draft every 2 seconds, 4000 characters at most; an app can never send a message for you.
+- **Profile import checks the version**: a profile backup now records that Molfar Vertep made it (`product` in `profile.json`), and a backup from a newer Molfar Vertep is refused before the preview ("update this one first"), so newer data never lands on an older engine. Backups made before 0.6.0, and upstream Chrysalis ones, import as before.
 - Roleplay 4.21.0 (app update) uses it: a new Home with Continue story, Create, Ask Molfar, achievements, recent chats with persona and character filters and delete, and My apps.
 
 ## 0.5.0 (2026-10-02)

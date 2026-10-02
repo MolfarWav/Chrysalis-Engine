@@ -90,7 +90,7 @@ describe("profile import", () => {
     put(other.root, "notes/bob-only.md", "bob's own note");
     put(path.dirname(other.auth), "auth.json", '{"old":"bob-key"}');
 
-    const s = profile.stageProfileImport(dataDir, zip);
+    const s = profile.stageProfileImport(dataDir, zip, "t");
     expect(s.username).toBe("mia");
     expect(s.secrets).toBe(true);
     expect(s.apps).toEqual(["roleplay"]);
@@ -123,7 +123,7 @@ describe("profile import", () => {
     const zip = await profile.exportProfile(dataDir, "mia", { engine: "test", password: "correct horse" });
     const other = bootstrapUserDir(dataDir, "bob");
     put(path.dirname(other.auth), "auth.json", '{"old":"bob-key"}');
-    const s = profile.stageProfileImport(dataDir, zip);
+    const s = profile.stageProfileImport(dataDir, zip, "t");
     const r = await profile.applyProfileImport(dataDir, "bob", s.token, { engine: "t", skipSecrets: true, beforeSwap: () => undefined });
     expect(r.secrets).toBe(false);
     expect(read(path.dirname(other.auth), "auth.json")).toContain("bob-key");
@@ -140,18 +140,30 @@ describe("profile import", () => {
       "workspace/.git/hooks/post-commit": enc("#!/bin/sh\nrm -rf ~\n"),
       "workspace/apps/a/dist/x.js": enc("derived"),
     });
-    const s = profile.stageProfileImport(dataDir, crafted);
+    const s = profile.stageProfileImport(dataDir, crafted, "t");
     await profile.applyProfileImport(dataDir, "mia", s.token, { engine: "t", beforeSwap: () => undefined });
     expect(fs.existsSync(path.join(p.root, ".git/hooks/post-commit"))).toBe(false);
     expect(read(p.root, ".git/config")).not.toContain("fsmonitor");
     expect(fs.existsSync(path.join(p.root, "apps/a/dist"))).toBe(false);
     expect(read(p.root, "notes/a.md")).toBe("a");
 
-    expect(() => profile.stageProfileImport(dataDir, zipSync({ "../../evil.txt": enc("x"), "profile.json": manifest }))).toThrow(/outside/);
+    expect(() => profile.stageProfileImport(dataDir, zipSync({ "../../evil.txt": enc("x"), "profile.json": manifest }), "t")).toThrow(/outside/);
     expect(fs.existsSync(path.join(dataDir, "..", "evil.txt"))).toBe(false);
-    expect(() => profile.stageProfileImport(dataDir, zipSync({ "manifest.json": enc("{}") }))).toThrow(/not a Molfar Vertep profile/);
-    expect(() => profile.stageProfileImport(dataDir, zipSync({ "profile.json": enc(JSON.stringify({ format: 99, kind: "chrysalis-profile" })) }))).toThrow(/newer/);
+    expect(() => profile.stageProfileImport(dataDir, zipSync({ "manifest.json": enc("{}") }), "t")).toThrow(/not a Molfar Vertep profile/);
+    expect(() => profile.stageProfileImport(dataDir, zipSync({ "profile.json": enc(JSON.stringify({ format: 99, kind: "chrysalis-profile" })) }), "t")).toThrow(/newer/);
     await expect(profile.applyProfileImport(dataDir, "mia", "0".repeat(32), { engine: "t", beforeSwap: () => undefined })).rejects.toThrow(/expired/);
+  }, 60_000);
+
+  it("a backup from a newer Molfar Vertep is refused; older and upstream ones are not", async () => {
+    const zip = await profile.exportProfile(dataDir, "mia", { engine: "0.7.0" });
+    expect(JSON.parse(new TextDecoder().decode(unzipSync(zip)["profile.json"]))).toMatchObject({ product: "molfar-vertep", engine: "0.7.0" });
+    expect(() => profile.stageProfileImport(dataDir, zip, "0.6.0")).toThrow(/made by Molfar Vertep 0\.7\.0, and this one is 0\.6\.0/);
+    expect(profile.stageProfileImport(dataDir, zip, "0.7.0").engine).toBe("0.7.0");
+    expect(profile.stageProfileImport(dataDir, zip, "0.10.1").engine).toBe("0.7.0");
+    // no product marker: an older fork backup or upstream Chrysalis 1.0.x
+    expect(profile.backupTooNew({ engine: "1.0.9" }, "0.6.0")).toBeNull();
+    expect(profile.backupTooNew({ product: "molfar-vertep", engine: "0.6.1" }, "0.6.0")).toContain("update this one");
+    expect(profile.backupTooNew({ product: "molfar-vertep", engine: "0.6.1" }, "dev")).toBeNull();
   }, 60_000);
 });
 

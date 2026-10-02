@@ -31,6 +31,7 @@ import path from "node:path";
 import { zip as zipFiles } from "fflate";
 import { BACKUP_MAX_BYTES, BackupError, extractZip } from "./apps/backup.js";
 import { type UserPaths, bootstrapUserDir, ensureGitignoreEntries, userPaths } from "./paths.js";
+import { isNewer } from "./updates.js";
 
 export const PROFILE_FORMAT = 1;
 const KIND = "chrysalis-profile";
@@ -157,10 +158,25 @@ export function openSecrets(sealedText: string, password: string): Record<string
 export interface ProfileManifest {
   format: number;
   kind: typeof KIND;
+  /** "molfar-vertep" since 0.6.0: `engine` is then a Molfar Vertep version.
+   *  Older backups and upstream Chrysalis ones (1.0.x, a different version
+   *  line) have none and are not compared. */
+  product?: typeof PRODUCT;
   username: string;
   exportedAt: string;
   engine: string;
   secrets: boolean;
+}
+
+const PRODUCT = "molfar-vertep";
+
+/** Why this engine refuses a backup made by a newer Molfar Vertep, or null.
+ *  Data written by a newer version may not be readable by an older one, and
+ *  importing replaces the whole profile, so it is refused rather than risked. */
+export function backupTooNew(m: Pick<ProfileManifest, "product" | "engine">, current: string): string | null {
+  if (m.product !== PRODUCT || !/^\d/.test(current) || !/^\d/.test(m.engine)) return null;
+  if (!isNewer(m.engine, current)) return null;
+  return `this backup was made by Molfar Vertep ${m.engine}, and this one is ${current}: update this one first, then import`;
 }
 
 export async function exportProfile(
@@ -190,7 +206,7 @@ export async function exportProfile(
     secrets = true;
   }
   if (opts.avatar && /^(png|jpe?g|webp|gif)$/.test(opts.avatar.ext)) files[`avatar.${opts.avatar.ext}`] = opts.avatar.bytes;
-  const manifest: ProfileManifest = { format: PROFILE_FORMAT, kind: KIND, username, exportedAt: new Date().toISOString(), engine: opts.engine, secrets };
+  const manifest: ProfileManifest = { format: PROFILE_FORMAT, kind: KIND, product: PRODUCT, username, exportedAt: new Date().toISOString(), engine: opts.engine, secrets };
   files["profile.json"] = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   return new Promise((resolve, reject) => {
     zipFiles(files, { level: 3 }, (err, out) => (err ? reject(err) : resolve(out)));
@@ -235,7 +251,7 @@ function count(dir: string): { files: number; bytes: number } {
   return { files, bytes };
 }
 
-function readManifest(dir: string): ProfileManifest {
+function readManifest(dir: string, current: string): ProfileManifest {
   let m: Partial<ProfileManifest>;
   try {
     m = JSON.parse(fs.readFileSync(path.join(dir, "profile.json"), "utf8")) as Partial<ProfileManifest>;
@@ -244,11 +260,15 @@ function readManifest(dir: string): ProfileManifest {
   }
   if (m.kind !== KIND || typeof m.format !== "number") throw new ProfileError("this is not a Molfar Vertep profile backup", 422);
   if (m.format > PROFILE_FORMAT) throw new ProfileError("this backup was made by a newer Molfar Vertep: update this one first", 422);
+  const product = m.product === PRODUCT ? PRODUCT : undefined;
+  const engine = typeof m.engine === "string" ? m.engine.slice(0, 40) : "";
+  const tooNew = backupTooNew({ product, engine }, current);
+  if (tooNew) throw new ProfileError(tooNew, 422);
   return {
-    format: m.format, kind: KIND,
+    format: m.format, kind: KIND, ...(product ? { product } : {}),
     username: typeof m.username === "string" ? m.username.slice(0, 64) : "",
     exportedAt: typeof m.exportedAt === "string" ? m.exportedAt.slice(0, 40) : "",
-    engine: typeof m.engine === "string" ? m.engine.slice(0, 40) : "",
+    engine,
     secrets: fs.existsSync(path.join(dir, "secrets.enc")),
   };
 }
@@ -278,7 +298,7 @@ function sanitizeWorkspace(ws: string): void {
 }
 
 /** Unpack a profile backup to a staging folder and say what is in it. */
-export function stageProfileImport(dataDir: string, zip: Uint8Array): ProfileSummary {
+export function stageProfileImport(dataDir: string, zip: Uint8Array, engine: string): ProfileSummary {
   // stale previews go after an hour
   try {
     for (const e of fs.readdirSync(stagingRoot(dataDir))) {
@@ -295,7 +315,7 @@ export function stageProfileImport(dataDir: string, zip: Uint8Array): ProfileSum
     } catch (e) {
       throw e instanceof BackupError ? new ProfileError(e.message, e.status) : e;
     }
-    const m = readManifest(dir);
+    const m = readManifest(dir, engine);
     const ws = path.join(dir, "workspace");
     if (!fs.existsSync(ws)) throw new ProfileError("this backup has no workspace in it", 422);
     sanitizeWorkspace(ws);
@@ -337,7 +357,7 @@ export async function applyProfileImport(
 ): Promise<{ safetyBackup: string; secrets: boolean; avatar: { bytes: Buffer; ext: string } | null }> {
   const dir = stagingDir(dataDir, token);
   if (!fs.existsSync(dir)) throw new ProfileError("that import has expired: choose the file again", 404);
-  const m = readManifest(dir);
+  const m = readManifest(dir, opts.engine);
   let secrets: Record<string, Buffer> | null = null;
   if (m.secrets && !opts.skipSecrets) {
     if (!opts.password) throw new ProfileError("this backup has keys: enter the password it was exported with, or import without the keys");

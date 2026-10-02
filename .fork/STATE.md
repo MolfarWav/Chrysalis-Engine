@@ -4,7 +4,7 @@ Fork of Chrysalis Engine; repo MolfarWav/Molfar.Vertep. Current as of 2026-10-02
 The full log of everything before this date, with commit hashes, is `.fork/archive/STATE-until-2026-10-02.md`; finished handoffs are in `.fork/archive/`. Standing rules are in `CLAUDE.md`.
 
 ## Active handoffs (queue and order: `.fork/handoff/START.md`)
-1. `.fork/handoff/workflow-release/HANDOFF.md`: release process (`.fork/RELEASE.md`), default prompts (language line, tests, convention), one universal launcher in the repo root. Do first.
+1. `.fork/handoff/workflow-release/HANDOFF.md`: part B (release process) DONE: `.fork/RELEASE.md`. Left: part A, default prompts (language line, tests, convention), and part C, one universal launcher in the repo root.
 2. `.fork/handoff/agent-instructions/HANDOFF.md`: rewrite the default agent instructions (persona.md), state the precedence, make the default follow engine updates. Do together with the default-prompts part of item 1.
 3. `.fork/handoff/agent-tools/HANDOFF.md`: five agent tools (plugin_log, app_request, json_get/json_set, web_fetch, model_try). Not tied to a release number.
 4. QUEUED, not started: `.fork/handoff/ui-pr1-shell/BRIEF.md`, Hermes' UI redesign brief (own release). Read its status header: parts of it are outdated.
@@ -12,8 +12,9 @@ The full log of everything before this date, with commit hashes, is `.fork/archi
 - Fork-only app skill `.fork/app-skills/roleplay/edit-large-card` (install into `apps/roleplay/.skills/`). `json_set` (item 3) would replace it.
 
 ## Releases
-- 0.1.0 (2026-10-01) is the only release (tag `0.1.0`). Version line is the fork's own (upstream is 1.0.x); `package.json` repository points to MolfarWav/Molfar.Vertep so update checks follow the fork. `CHANGELOG.md` lists every fork change; `## Unreleased` already holds the rename, Litopys, the Roleplay fork, `replaces` and the app-update fix: next release is 0.2.0 for that reason alone.
-- Tags are created by the user on GitHub (the session proxy cannot push tags). Release assets keep upstream's `Chrysalis-*` names (`self-update.ts` matches them).
+- 0.1.0 (2026-10-01): tag `0.1.0` (no `v`, on a `claude/*` branch), so `release.yml` never ran and it has no archives. Version line is the fork's own (upstream is 1.0.x); `package.json` repository points to MolfarWav/Molfar.Vertep so update checks follow the fork.
+- 0.2.0 (2026-10-02): prepared, NOT yet tagged. `package.json` is 0.2.0, CHANGELOG has the section, notes in `.fork/release-notes/0.2.0.md`, main fast-forwarded to the release commit. Waiting for the user: enable Actions on the fork (never enabled: zero runs), then push tag `v0.2.0` on main. Process: `.fork/RELEASE.md`.
+- Tags are pushed by the user from a terminal (the session proxy cannot push tags); `release.yml` creates the GitHub release itself (title "Molfar.Vertep X.Y.Z", body from `.fork/release-notes/X.Y.Z.md`; the Docker step runs only upstream). Release assets keep upstream's `Chrysalis-*` names (`self-update.ts` matches them).
 - `APP_API_VERSION` (1.0.2, `src/install.ts`): what app `engine` ranges are checked against; raise it only when an upstream merge changes the app contract.
 
 ## What the engine has (all shipped; details in CHANGELOG and the archive)
@@ -21,6 +22,7 @@ The full log of everything before this date, with commit hashes, is `.fork/archi
 - Memory and skills: `src/agent/memory.ts` (core MEMORY.md + topic files, `memory_search`, written only through confirmed cards); `builtin-skills/` ship with the engine (a global workspace skill of the same name replaces one, deleting the copy resets it); tools `skill_propose`, `skill_edit`, `skill_load`.
 - Projects on the agent page (`src/agent/projects.ts`, `/v1/projects…`; chats can move between projects), checkpoints (`checkpoints.ts`, restore = code only), protected paths (`protect.ts`, list in settings `agentProtectedPaths`), `ask_user` with options and several questions, default instructions (`DEFAULT_PERSONA` in `src/paths.ts`, "Restore default instructions").
 - Model pickers (Settings > Models, `models-shown.json`), full profile backup (`src/profile-backup.ts`, Settings > Backup; import replaces the profile).
+- Updates panel (0.2.0): top-bar Updates button with a badge (`client/src/updates-panel.tsx`); engine row for admins (source installs: "restart with its launcher"), one row per app with an update source, "Update all" stops at the first row needing a decision. The app update flow (strategies, dep/permission review) lives in `client/src/app-update.tsx`, shared with the launcher's AppDetail. Checks: once per shell start, then "Check now" or after an update. The logo opens the launcher. Standalone plugins imported from git have no update source yet, so they are not in the panel.
 - Emulated git: `add` is a no-op, `rm` deletes tracked files. Hot update removes deleted modules (`src/builder/dev.ts`).
 - Product name Molfar Vertep (UI in 13 locales, README, launchers); internal `chrysalis` names kept so upstream merges stay clean.
 

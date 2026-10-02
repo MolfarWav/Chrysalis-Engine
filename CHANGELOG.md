@@ -7,6 +7,11 @@ Versions here count from 0.1.0 and are independent of upstream's.
 
 ## Unreleased
 
+## 0.2.0 (2026-10-02)
+
+- **Updates in one place.** An Updates button in the top bar, with a badge when anything is newer, opens one panel: Molfar Vertep itself (for admins; a copy run from source says to restart it with its launcher) and every app installed from a repository. Each row shows current → new version, a link to the changes and an Update button; "Update all" updates the apps one by one and stops at the first that needs a decision. Overlapping edits get the same choices as on the app page (keep mine, take the update, ask the agent to merge). Checks run once when the shell starts, then on "Check now" or after an update.
+- The Molfar Vertep logo in the top bar opens the start screen.
+- Releases are built from a `vX.Y.Z` tag on main, titled "Molfar.Vertep X.Y.Z", with notes from `.fork/release-notes/`.
 - The project is now called **Molfar Vertep**: the interface (all 13 languages), page titles, console messages, README and `package.json`. Internal names stay (the `chrysalis` command, data folders, `CHRYSALIS_*` variables, release file names), so existing installs keep their data and upstream fixes still merge. Strings about the Store's official apps still credit the Chrysalis maintainers, who make them.
 - Update checks and `package.json` point to the renamed repository, MolfarWav/Molfar.Vertep.
 - **Roleplay comes from Molfar Vertep's own fork**, [MolfarWav/Molfar.Vertep-Roleplay](https://github.com/MolfarWav/Molfar.Vertep-Roleplay), never from upstream again. The Store installs the fork, and an existing install switches its update source to the fork on the next start (code and data untouched; the next update merges the fork in, without conflicts over the plugins' source fields). Apps under MolfarWav count as official.

@@ -30,6 +30,8 @@ rem ---------- run from a copy ----------
 rem git may replace this very file during an update, and cmd reads a batch
 rem file as it goes, so the work runs from a copy in %TEMP%.
 if /i "%~1"=="--from-copy" goto copied
+rem copies left by windows closed with X; a newer one may still be running
+forfiles /p "%TEMP%" /m "molfar-vertep-*.bat" /d -1 /c "cmd /c del /q @path" >nul 2>nul
 set "MV_COPY=%TEMP%\molfar-vertep-%RANDOM%%RANDOM%.bat"
 copy /y "%~f0" "%MV_COPY%" >nul 2>nul
 if errorlevel 1 (
@@ -41,9 +43,12 @@ if errorlevel 1 (
 
 :copied_direct
 set "MV_SELF=%~f0"
+set "MV_RUNNING=%~f0"
 goto args
 
 :copied
+rem %0 moves with shift: keep the running copy's path first
+set "MV_RUNNING=%~f0"
 set "MV_SELF=%~f2"
 shift
 shift
@@ -252,7 +257,7 @@ if defined MV_DEV (
 )
 if errorlevel 1 goto fail
 rem a version without this launcher keeps it, so the desktop shortcut still works
-if not exist "Molfar-Vertep.bat" copy /y "%~f0" "Molfar-Vertep.bat" >nul 2>nul
+if not exist "Molfar-Vertep.bat" copy /y "%MV_RUNNING%" "Molfar-Vertep.bat" >nul 2>nul
 set "MV_FULL=1"
 
 rem ---------- install and build only what is needed ----------
@@ -353,5 +358,5 @@ exit /b 0
 
 :done
 rem the temporary copy removes itself on the way out
-if /i "%~dp0"=="%TEMP%\" (goto) 2>nul & del "%~f0"
+if /i not "%MV_RUNNING%"=="%MV_SELF%" (goto) 2>nul & del "%MV_RUNNING%"
 exit /b %MV_RC%

@@ -96,7 +96,7 @@ function AppRow(props: {
     )
     extra = (
       <>
-        {s.engine ? <p className="text-11 text-ink-muted">{tr("Needs Chrysalis engine {engine}. This engine is {current}.", { engine: s.engine, current: "v" + s.engineVersion })}</p> : null}
+        {s.engine ? <p className="text-11 text-ink-muted">{tr("Needs app contract {engine}. This engine supports {current}.", { engine: s.engine, current: "v" + s.engineVersion })}</p> : null}
         {s.modified && !s.engine ? <p className="text-11 text-ink-faint">{tr("Your own edits are merged in.")}</p> : null}
       </>
     )

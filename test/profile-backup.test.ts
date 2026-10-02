@@ -149,7 +149,7 @@ describe("profile import", () => {
 
     expect(() => profile.stageProfileImport(dataDir, zipSync({ "../../evil.txt": enc("x"), "profile.json": manifest }))).toThrow(/outside/);
     expect(fs.existsSync(path.join(dataDir, "..", "evil.txt"))).toBe(false);
-    expect(() => profile.stageProfileImport(dataDir, zipSync({ "manifest.json": enc("{}") }))).toThrow(/not a Chrysalis profile/);
+    expect(() => profile.stageProfileImport(dataDir, zipSync({ "manifest.json": enc("{}") }))).toThrow(/not a Molfar Vertep profile/);
     expect(() => profile.stageProfileImport(dataDir, zipSync({ "profile.json": enc(JSON.stringify({ format: 99, kind: "chrysalis-profile" })) }))).toThrow(/newer/);
     await expect(profile.applyProfileImport(dataDir, "mia", "0".repeat(32), { engine: "t", beforeSwap: () => undefined })).rejects.toThrow(/expired/);
   }, 60_000);

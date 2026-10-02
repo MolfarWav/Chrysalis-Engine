@@ -528,7 +528,7 @@ ${skills.length ? skills.map(skillLine).join("\n") : "(none yet)"}
 - After substantial work, at a natural stopping point, propose what is worth keeping — once, not after every message. When an entry is outdated, pass replaces with a phrase from the old entry.
 - Before a task a skill covers, call skill_load and follow it.
 - Skills are how this workspace gets better at its work. Propose one (skill_propose) when a task took several attempts and you now know the path, when the user corrected you the same way twice, or when they ask. When a skill you followed was wrong or missed a step, fix it with skill_edit right after the task. Load skill-authoring first. Propose once, at a natural stopping point, with one line on what it improves; the user saves or skips it.
-- A [built-in] skill ships with Chrysalis. Changing one saves a workspace copy that replaces it; the user can reset it to the built-in version.
+- A [built-in] skill ships with Molfar Vertep. Changing one saves a workspace copy that replaces it; the user can reset it to the built-in version.
 - memory/, skills/, apps/*/.memory/, apps/*/.skills/ and the same folders under projects/ cannot be written by file tools or the shell: use the tools.`;
 }
 

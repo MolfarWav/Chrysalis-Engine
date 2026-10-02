@@ -44,8 +44,13 @@ export interface InstanceConfig {
   defaultModel: string | null;
 }
 
-/** Where the Store's list of apps comes from unless config.yaml says otherwise. */
-export const DEFAULT_STORE_URL = "https://raw.githubusercontent.com/ProjectChrysalis/app-store/main/apps.json";
+/** Where the Store's list of apps comes from unless config.yaml says otherwise:
+ *  Molfar Vertep's own catalog. */
+export const DEFAULT_STORE_URL = "https://raw.githubusercontent.com/MolfarWav/Molfar.Vertep-Store/main/apps.json";
+
+/** Store lists earlier versions wrote into config.yaml as the default. A file
+ *  that still names one never chose it, so it moves to DEFAULT_STORE_URL. */
+export const PAST_DEFAULT_STORE_URLS: readonly string[] = ["https://raw.githubusercontent.com/ProjectChrysalis/app-store/main/apps.json"];
 
 export function defaultInstanceConfig(): InstanceConfig {
   const sandbox = defaultSandboxConfig();
@@ -230,9 +235,9 @@ const yamlString = (s: string): string => JSON.stringify(s);
 
 export function renderConfigFile(c: InstanceConfig): string {
   const hosts = c.allowedHosts.length ? "\n" + c.allowedHosts.map((h) => `  - ${yamlString(h)}`).join("\n") : " []";
-  return `# Chrysalis server settings.
+  return `# Molfar Vertep server settings.
 #
-# Edit with any text editor, then restart Chrysalis. Admins can change most of
+# Edit with any text editor, then restart Molfar Vertep. Admins can change most of
 # these in Settings > Server too, which saves back to this file.
 #
 # Any setting can be set for a single run without editing this file:
@@ -240,15 +245,15 @@ export function renderConfigFile(c: InstanceConfig): string {
 #   command-line flag      --port 9000   --lan   --no-open-browser
 
 # Folder for accounts, apps, chats and keys. Relative paths start next to
-# this file. Move the folder while Chrysalis is stopped.
+# this file. Move the folder while Molfar Vertep is stopped.
 dataRoot: ${yamlString(c.dataRoot)}
 
 # ---- Network ----
 
-# Port Chrysalis listens on.
+# Port Molfar Vertep listens on.
 port: ${c.port}
 
-# Let other devices (your phone, a tablet, another computer) open Chrysalis.
+# Let other devices (your phone, a tablet, another computer) open Molfar Vertep.
 #   false  only this computer
 #   true   any device that can reach this computer; every account still
 #          needs its password
@@ -257,7 +262,7 @@ lan: ${c.lan}
 # Network interface to use when lan is true. "auto" means all of them.
 listenAddress: ${yamlString(c.listenAddress)}
 
-# Extra host names that may open Chrysalis, such as a local DNS name or a
+# Extra host names that may open Molfar Vertep, such as a local DNS name or a
 # Tailscale machine name. IP addresses and this computer's own name always work.
 allowedHosts:${hosts}
 
@@ -270,7 +275,7 @@ ssl:
 
 # ---- Startup ----
 
-# Open Chrysalis in your browser when it starts (desktop only).
+# Open Molfar Vertep in your browser when it starts (desktop only).
 openBrowser: ${c.openBrowser}
 
 # ---- Apps and agent ----
@@ -416,6 +421,15 @@ export function loadConfig(homeDir: string, opts: { env?: NodeJS.ProcessEnv; fla
       throw new ConfigError(`${file} must be a list of "setting: value" lines. Fix the file, or delete it to start over with defaults.`);
     }
     fileCfg = readDocument(doc as Record<string, unknown>, warnings);
+    if (fileCfg.apps.store !== null && PAST_DEFAULT_STORE_URLS.includes(fileCfg.apps.store)) {
+      fileCfg = { ...fileCfg, apps: { ...fileCfg.apps, store: DEFAULT_STORE_URL } };
+      try {
+        saveConfigFile(file, fileCfg);
+        warnings.push(`the Store list moved to ${DEFAULT_STORE_URL}`);
+      } catch {
+        /* read-only home: the new list still applies for this run */
+      }
+    }
   } else {
     fileCfg = defaultInstanceConfig();
     const legacy = path.join(dataDirOf(homeDir, { ...fileCfg, dataRoot: env.DATA_DIR || fileCfg.dataRoot }), "instance.json");

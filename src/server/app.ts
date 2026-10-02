@@ -941,13 +941,13 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     const ip = clientIp(c);
     const ipFail = loginIpFails.get(ip);
     if (ipFail && ipFail.until > Date.now()) return c.json({ error: "Too many attempts, try again shortly" }, 429);
-    if (setupToken === null || users.list().length > 0) return c.json({ error: "Chrysalis is already set up. Sign in instead." }, 409);
+    if (setupToken === null || users.list().length > 0) return c.json({ error: "Molfar Vertep is already set up. Sign in instead." }, 409);
     const body = await c.req.json<{ token?: string; username?: string; password?: string }>().catch(() => ({}) as { token?: string; username?: string; password?: string });
     const given = Buffer.from(typeof body.token === "string" ? body.token.trim() : "");
     const want = Buffer.from(setupToken);
     if (given.length !== want.length || !nodeCrypto.timingSafeEqual(given, want)) {
       bumpFails(loginIpFails, ip, 20);
-      return c.json({ error: "This setup link is not valid. Use the link Chrysalis printed when it started." }, 403);
+      return c.json({ error: "This setup link is not valid. Use the link Molfar Vertep printed when it started." }, 403);
     }
     let created: UserRecord;
     try {
@@ -3721,7 +3721,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     const staged = readStagedSafe(unpacked.root);
     if (!staged) {
       fs.rmSync(dest, { recursive: true, force: true });
-      return c.json({ error: "not a Chrysalis app (missing or invalid manifest.json)" }, 422);
+      return c.json({ error: "not a Molfar Vertep app (missing or invalid manifest.json)" }, 422);
     }
     return c.json({
       staged: true,
@@ -3751,7 +3751,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     const staged = readStagedSafe(root);
     if (!staged) {
       fs.rmSync(dest, { recursive: true, force: true });
-      return c.json({ error: "not a Chrysalis app (missing or invalid manifest.json)" }, 422);
+      return c.json({ error: "not a Molfar Vertep app (missing or invalid manifest.json)" }, 422);
     }
     const source = meta?.source && isValidGitUrl(meta.source.git) ? meta.source : null;
     const baselineDir = path.join(root, BACKUP_META_DIR, "baseline");
@@ -3835,7 +3835,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
         // sidecar so the confirm phase knows the head without a .git to ask
         fs.writeFileSync(path.join(staging, ".staged-head"), head + "\n", "utf8");
         const staged = readStaged(staging);
-        if (!staged) return c.json({ error: "not a Chrysalis app (missing or invalid manifest.json)" }, 422);
+        if (!staged) return c.json({ error: "not a Molfar Vertep app (missing or invalid manifest.json)" }, 422);
         return c.json({
           staged: true, slug, head,
           manifest: { name: staged.manifest.name, version: staged.manifest.version, author: staged.manifest.author ?? null },
@@ -3860,7 +3860,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
       } catch (e) {
         return c.json({ error: `clone failed: ${(e as Error).message}` }, 502);
       }
-      if (!staged) return c.json({ error: "not a Chrysalis app (missing or invalid manifest.json)" }, 422);
+      if (!staged) return c.json({ error: "not a Molfar Vertep app (missing or invalid manifest.json)" }, 422);
       // the preview's staging was gone, so this is a FRESH clone: it must be
       // the same commit the user reviewed. Otherwise the permissions shown at
       // preview and the code installed here are two different things, and the
@@ -4101,7 +4101,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     const to = incomingManifest.version;
     if (incomingManifest.engine && !satisfiesRange(incomingManifest.engine, APP_API_VERSION)) {
       dropStaging();
-      return c.json({ error: `v${to} needs Chrysalis engine ${incomingManifest.engine}, and this engine keeps the app contract of Chrysalis v${APP_API_VERSION}. Update the engine first.` }, 409);
+      return c.json({ error: `v${to} needs app contract ${incomingManifest.engine}, and this engine supports v${APP_API_VERSION}. Update the engine first.` }, 409);
     }
 
     // What a third-party update would newly be able to do is reviewed before
@@ -4505,7 +4505,7 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
         const status = readBuildStatus(path.join(p.apps, id));
         const why = status && !status.ok && status.errors.length
           ? `<div style="text-align:left;max-width:720px;white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:12px;color:#e8a0a0">${escapeHtml(status.errors.slice(0, 5).map((e) => `${e.file ?? ""}${e.line ? `:${e.line}` : ""}\n  ${e.text}`).join("\n\n"))}</div>`
-          : `<div style="text-align:center;max-width:460px">This app has not been built yet. It builds when you open it in Chrysalis.</div>`;
+          : `<div style="text-align:center;max-width:460px">This app has not been built yet. It builds when you open it in Molfar Vertep.</div>`;
         return c.html(withBridge(`<!doctype html><meta charset="utf-8"><title>${escapeHtml(app.manifest.name ?? id)}</title><body style="font-family:system-ui;background:#111217;color:#888;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;padding:16px;box-sizing:border-box">${why}</body>`));
       }
       armLookWatch(username, p.apps, bus);
@@ -5198,7 +5198,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#111217}iframe{border:
     } catch (e) {
       return c.json({ error: (e as Error).message }, 403);
     }
-    if (!SELF_UPDATE || !deps.restart) return c.json({ error: "this copy of Chrysalis cannot update itself" }, 400);
+    if (!SELF_UPDATE || !deps.restart) return c.json({ error: "this copy of Molfar Vertep cannot update itself" }, 400);
     const release = await latestRelease();
     if (!release?.newer || !release.asset) return c.json({ error: "no update to install" }, 409);
     return c.json(startUpdate(release.version, release.asset, deps.restart));

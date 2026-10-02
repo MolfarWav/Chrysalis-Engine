@@ -35,7 +35,7 @@ function readFormat(dataDir: string): FormatRecord | null {
 export function dataFormatProblem(dataDir: string, format: number = DATA_FORMAT): string | null {
   const found = readFormat(dataDir);
   if (!found || found.format <= format) return null;
-  return `This data folder was last used by Chrysalis ${found.version}, which stores data in a newer way than this version can read. Install Chrysalis ${found.version} or newer to open it. Nothing was changed.`;
+  return `This data folder was last used by Molfar Vertep ${found.version}, which stores data in a newer way than this version can read. Install Molfar Vertep ${found.version} or newer to open it. Nothing was changed.`;
 }
 
 /** Record that the folder now holds this version's layout. */

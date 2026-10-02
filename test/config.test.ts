@@ -8,7 +8,7 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { ConfigError, SETTINGS, defaultInstanceConfig, envNameOf, flagNameOf, loadConfig, parseFlags, renderConfigFile } from "../src/config.js";
+import { ConfigError, DEFAULT_STORE_URL, SETTINGS, defaultInstanceConfig, envNameOf, flagNameOf, loadConfig, parseFlags, renderConfigFile } from "../src/config.js";
 import { buildApp } from "../src/server/app.js";
 import { Listener } from "../src/server/listen.js";
 import { ServerSettings } from "../src/server/settings.js";
@@ -30,7 +30,7 @@ describe("config.yaml", () => {
   it("is created with defaults on first run and reads back the same", () => {
     const first = loadConfig(home, { env: {} });
     expect(first.created).toBe(true);
-    expect(fs.readFileSync(path.join(home, "config.yaml"), "utf8")).toContain("# Chrysalis server settings.");
+    expect(fs.readFileSync(path.join(home, "config.yaml"), "utf8")).toContain("# Molfar Vertep server settings.");
     expect(first.config).toEqual(defaultInstanceConfig());
     const again = loadConfig(home, { env: {} });
     expect(again.created).toBe(false);
@@ -83,6 +83,37 @@ describe("config.yaml", () => {
   it("refuses to start on a file that is not YAML", () => {
     fs.writeFileSync(path.join(home, "config.yaml"), "port: [\n");
     expect(() => loadConfig(home, { env: {} })).toThrow(ConfigError);
+  });
+
+  it("moves a file that still names the old default Store list to the current one, and says so", () => {
+    const old = "https://raw.githubusercontent.com/ProjectChrysalis/app-store/main/apps.json";
+    const file = path.join(home, "config.yaml");
+    fs.writeFileSync(file, `port: 9000\napps:\n  store: ${JSON.stringify(old)}\n`);
+    const loaded = loadConfig(home, { env: {} });
+    expect(loaded.config.apps.store).toBe(DEFAULT_STORE_URL);
+    expect(loaded.config.port).toBe(9000);
+    expect(loaded.warnings.join("\n")).toContain(DEFAULT_STORE_URL);
+    const text = fs.readFileSync(file, "utf8");
+    expect(text).toContain(DEFAULT_STORE_URL);
+    expect(text).not.toContain("ProjectChrysalis");
+    // once moved, a second start has nothing left to say
+    expect(loadConfig(home, { env: {} }).warnings).toEqual([]);
+  });
+
+  it("leaves a custom Store list and a disabled Store alone", () => {
+    const file = path.join(home, "config.yaml");
+    const custom = "https://example.com/my-apps.json";
+    fs.writeFileSync(file, `apps:\n  store: ${JSON.stringify(custom)}\n`);
+    const kept = loadConfig(home, { env: {} });
+    expect(kept.config.apps.store).toBe(custom);
+    expect(kept.warnings).toEqual([]);
+    expect(fs.readFileSync(file, "utf8")).toContain(custom);
+
+    fs.writeFileSync(file, "apps:\n  store: false\n");
+    const off = loadConfig(home, { env: {} });
+    expect(off.config.apps.store).toBeNull();
+    expect(off.warnings).toEqual([]);
+    expect(fs.readFileSync(file, "utf8")).toContain("store: false");
   });
 });
 
@@ -269,7 +300,7 @@ describe("server_settings agent tool", () => {
     expect(textOf(await decline.execute("t2", { action: "change", changes: { lan: true } }))).toMatch(/did not approve/);
     expect(loaded.config.lan).toBe(false);
     expect(asked[0]).toContain("lan: false → true");
-    expect(asked[0]).toContain("Other devices on your network will be able to open Chrysalis");
+    expect(asked[0]).toContain("Other devices on your network will be able to open Molfar Vertep");
 
     const approve = await toolWith(settings, async () => "Apply");
     expect(textOf(await approve.execute("t3", { action: "change", changes: { lan: true } }))).toMatch(/Saved/);

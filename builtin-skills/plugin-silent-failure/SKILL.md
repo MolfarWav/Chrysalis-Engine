@@ -36,7 +36,7 @@ You cannot read the engine log: it lives outside the workspace. So do not guess 
 
 ## 4. Scheduler facts (onTick)
 - Minimum interval is 5000 ms. The first tick fires one full interval after the timer arms: with 300000 that is 5 minutes. Do not call it broken sooner.
-- Timers arm only after the signed-in user's browser has made a request (they re-sync about every 10 s). After an engine restart with no Chrysalis tab open, nothing ticks.
+- Timers arm only after the signed-in user's browser has made a request (they re-sync about every 10 s). After an engine restart with no Molfar Vertep tab open, nothing ticks.
 - A tick never overlaps the previous tick of the same plugin.
 - While testing, lower `intervalMs` to 15000. Restore the original value after.
 

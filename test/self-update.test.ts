@@ -82,7 +82,7 @@ describe("self-update", () => {
       return file;
     };
     await checkProgram(program("echo 1.2.0"), "1.2.0");
-    await expect(checkProgram(program("echo 1.1.9"), "1.2.0")).rejects.toThrow(/says it is Chrysalis 1.1.9/);
+    await expect(checkProgram(program("echo 1.1.9"), "1.2.0")).rejects.toThrow(/says it is Molfar Vertep 1.1.9/);
     await expect(checkProgram(program("exit 127"), "1.2.0")).rejects.toThrow(/does not run on this computer/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -202,7 +202,7 @@ describe("data format", () => {
     recordDataFormat(data, "1.0.0", 1);
     expect(dataFormatProblem(data, 1)).toBeNull();
     recordDataFormat(data, "2.0.0", 2);
-    expect(dataFormatProblem(data, 1)).toMatch(/last used by Chrysalis 2.0.0/);
+    expect(dataFormatProblem(data, 1)).toMatch(/last used by Molfar Vertep 2.0.0/);
     expect(dataFormatProblem(data, 2)).toBeNull();
     fs.rmSync(data, { recursive: true, force: true });
   });

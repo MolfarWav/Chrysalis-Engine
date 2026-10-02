@@ -240,10 +240,10 @@ function readManifest(dir: string): ProfileManifest {
   try {
     m = JSON.parse(fs.readFileSync(path.join(dir, "profile.json"), "utf8")) as Partial<ProfileManifest>;
   } catch {
-    throw new ProfileError("this is not a Chrysalis profile backup (no profile.json). An app's own backup is imported from the apps screen instead.", 422);
+    throw new ProfileError("this is not a Molfar Vertep profile backup (no profile.json). An app's own backup is imported from the apps screen instead.", 422);
   }
-  if (m.kind !== KIND || typeof m.format !== "number") throw new ProfileError("this is not a Chrysalis profile backup", 422);
-  if (m.format > PROFILE_FORMAT) throw new ProfileError("this backup was made by a newer Chrysalis: update this one first", 422);
+  if (m.kind !== KIND || typeof m.format !== "number") throw new ProfileError("this is not a Molfar Vertep profile backup", 422);
+  if (m.format > PROFILE_FORMAT) throw new ProfileError("this backup was made by a newer Molfar Vertep: update this one first", 422);
   return {
     format: m.format, kind: KIND,
     username: typeof m.username === "string" ? m.username.slice(0, 64) : "",

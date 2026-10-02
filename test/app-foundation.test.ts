@@ -135,14 +135,14 @@ afterEach(() => {
     };
     // a manifest claiming it (agent shell, non-admin shell, repo), with or
     // without a source that looks official
-    mk("claims", { name: "C", version: "1", kind: "web", official: true, source: { git: "https://github.com/ProjectChrysalis/Roleplay" } });
+    mk("claims", { name: "C", version: "1", kind: "web", official: true, source: { git: "https://github.com/MolfarWav/Molfar.Vertep-Roleplay" } });
     expect(await official("claims")).toBe(false);
     // installed by the engine from a maintainers' repository
     mk("real", { name: "R", version: "1", kind: "web" });
-    writeInstallSource(p.appUpstream, "real", { git: "https://github.com/projectchrysalis/Roleplay.git", ref: "HEAD" });
+    writeInstallSource(p.appUpstream, "real", { git: "https://github.com/molfarwav/Molfar.Vertep-Roleplay.git", ref: "HEAD" });
     expect(await official("real")).toBe(true);
     // installed from anywhere else, including look-alike owners and paths
-    for (const git of ["https://github.com/ProjectChrysalisX/app", "https://github.com/someone/ProjectChrysalis", "https://github.com/ProjectChrysalis/a/b", "https://evil.example/ProjectChrysalis/app"]) {
+    for (const git of ["https://github.com/MolfarWavX/app", "https://github.com/someone/MolfarWav", "https://github.com/MolfarWav/a/b", "https://evil.example/MolfarWav/app", "https://github.com/ProjectChrysalis/Roleplay-Chrysalis"]) {
       writeInstallSource(p.appUpstream, "real", { git, ref: "HEAD" });
       expect(await official("real"), git).toBe(false);
     }

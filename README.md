@@ -2,47 +2,26 @@
 
 # Molfar Vertep
 
-**The AI frontend you can reshape just by asking.**
+**A local engine where an AI agent builds and reshapes your apps by asking.**
 
-Molfar Vertep is a modified fork of [Chrysalis Engine](https://github.com/ProjectChrysalis/Chrysalis-Engine)
-by ProjectChrysalis, under the same license (AGPL-3.0-only). Source:
-[MolfarWav/Molfar.Vertep](https://github.com/MolfarWav/Molfar.Vertep).
-Versions count from 0.1.0 and are independent of upstream's. What changed: [CHANGELOG.md](CHANGELOG.md).
+Molfar Vertep runs on your own computer or phone and opens in your browser. Pick
+the apps you want from the built-in Store (Roleplay comes first), and every one
+of them is plain files that the built-in agent can change while you watch. Ask
+for a feature and it builds it. Your chats, characters and keys are stored on
+your device.
 
-Run it from source:
-
-```sh
-git clone https://github.com/MolfarWav/Molfar.Vertep
-cd Molfar.Vertep
-bun install && (cd client-agent && bun install)
-bun run build:client
-bun start
-```
-
-Internal names stay as upstream has them (the `chrysalis` command, data folders,
-environment variables), so upstream fixes keep merging cleanly.
-
----
-
-*The rest of this README is upstream's. It describes Chrysalis Engine and its
-releases, not this fork's.*
-
-# Chrysalis Engine
-
-**The AI frontend you can reshape just by asking.**
-
-Chrysalis runs on your own computer or phone and opens in your browser. Pick the
-apps you want from the built-in Store, and every one of them is files the
-built-in agent can change while you watch. Ask for a feature and it builds it.
-Your chats, characters and keys are stored on your device.
-
-<p align="center"><img src="https://github.com/ProjectChrysalis/projectchrysalis.github.io/raw/main/assets/showcase.gif" alt="Chrysalis showcase: the agent editing the roleplay app live, character search, building a visual novel app, tool calling, mobile layout and model providers" /></p>
+Molfar Vertep is a modified version of
+[Chrysalis Engine](https://github.com/ProjectChrysalis/Chrysalis-Engine) by
+ProjectChrysalis, licensed under the GNU Affero General Public License v3.0 only
+(AGPL-3.0-only). See [LICENSE](LICENSE) for the full text and
+[CHANGELOG.md](CHANGELOG.md) for what changed.
 
 ## Install
 
 Pick the download for your system from the
-[releases page](https://github.com/ProjectChrysalis/Chrysalis-Engine/releases).
-Nothing else needs to be installed.
+[releases page](https://github.com/MolfarWav/Molfar.Vertep/releases). Nothing
+else needs to be installed. The archive names stay `Chrysalis-<version>-<system>`
+on purpose: self-update looks for them.
 
 | System | Download | Start it |
 | --- | --- | --- |
@@ -51,42 +30,121 @@ Nothing else needs to be installed.
 | macOS (Intel) | `Chrysalis-<version>-macos-x64.tar.gz` | Unpack, double-click `start.command` |
 | Linux | `Chrysalis-<version>-linux-x64.tar.gz` (or `-arm64`) | Unpack, run `./chrysalis` |
 | Android 9+ | `Chrysalis-<version>-android-arm64.apk` | Install, open the app |
-| Docker | `ghcr.io/projectchrysalis/chrysalis-engine` | `docker compose up -d` with this repository's `docker-compose.yml` |
+| Docker (from 0.3.0) | `ghcr.io/molfarwav/molfar-vertep` | See below |
 
-Want new features before they are stable? The
-[staging pre-release](https://github.com/ProjectChrysalis/Chrysalis-Engine/releases/tag/staging-latest)
-is rebuilt from the `staging` branch on every change. It can break. On Android it
-installs as a separate *Chrysalis Staging* app with its own data, so your stable
-app is untouched.
+Internal names stay as they were: the command is `chrysalis`, settings are
+`CHRYSALIS_*` variables, and data lives in folders called `Chrysalis`. They are
+the same program as Molfar Vertep, so do not be surprised by them.
 
-Already have [Bun](https://bun.sh)? `bun install -g chrysalis-engine`, then run `chrysalis`.
+A one-file launcher for Windows is coming. Until then, Windows users can use the
+download above or run from source.
 
 On macOS, start with `start.command`, not `chrysalis`. These builds do not carry
 a signature macOS accepts, so opening `chrysalis` directly is blocked or closes
-straight away with `killed`. `start.command`
-clears the download flag, signs the program for that Mac and starts it — use it
-again after each update. The Bun install above avoids this.
+straight away with `killed`. `start.command` clears the download flag, signs the
+program for that Mac and starts it; use it again after each update.
 
-## Bring your own tools
+The Android APK is debug-signed, so it cannot update an installed copy: remove
+the old app first (export your apps' backups before that, because uninstalling
+deletes the app's data).
 
-Your whole Chrysalis is a folder of plain files under git. Run `chrysalis
-workspace` in a terminal — Chrysalis makes itself a command the first time it
-starts, so there is nothing to install (open a new terminal if it was already
-running). It prints where the workspace is; point your editor or coding agent
-at it and work normally, saves reach open pages on their own. `AGENTS.md` there
-explains the layout to whatever agent reads it. For the parts that are not
-files, `./chrysalis api GET /v1/apps` calls the running engine's API.
+### Docker
+
+From version 0.3.0 the release workflow publishes
+`ghcr.io/molfarwav/molfar-vertep` (tags `latest` and the version). Settings and
+data live in the `/chrysalis` volume, and the container listens on port 8788:
+
+```sh
+docker run -d --name chrysalis -p 8788:8788 -v chrysalis-data:/chrysalis \
+  ghcr.io/molfarwav/molfar-vertep:latest
+docker logs chrysalis        # the first start prints the setup link
+```
+
+The repository's `docker-compose.yml` does the same; `docker compose up -d
+--build` builds an image from your checkout instead of pulling one.
+
+### Running from source
+
+You need [Git](https://git-scm.com) and [Bun](https://bun.sh) 1.4 or newer.
+
+```sh
+git clone https://github.com/MolfarWav/Molfar.Vertep
+cd Molfar.Vertep
+bun install
+(cd client-agent && bun install)
+bun run build:client
+bun start
+```
+
+`bun run dev` restarts on every change. `bun run test` runs the tests and
+`bun run typecheck` checks every project.
 
 ## First start
 
-Chrysalis opens your browser (or prints a link) with a one-time setup address.
-Open it, create your account, and add a model connection in
-**Settings > API connections**. The first account is the admin: it can add
-more people, each with their own workspace, agent and apps.
+Molfar Vertep opens your browser (or prints a link) with a one-time setup
+address. Open it, create your account, and add a model connection in
+**Settings > API connections**. The first account is the admin: it can add more
+people, each with their own workspace, agent and apps.
 
-Lost the link? It is in the window where Chrysalis started and in
-`data/logs/chrysalis.log`. Forgot a password? Stop Chrysalis and run
+Lost the link? It is in the window where Molfar Vertep started and in
+`data/logs/chrysalis.log`. Forgot a password? Stop Molfar Vertep and run
 `chrysalis reset-password <name>`.
+
+## The Store and apps
+
+The Store's list of apps comes from
+[MolfarWav/Molfar.Vertep-Store](https://github.com/MolfarWav/Molfar.Vertep-Store).
+Official apps are the ones under the MolfarWav account on GitHub, and Roleplay is
+one of them. Other apps are community apps: Molfar Vertep shows what they ask
+for (plugin permissions, network hosts, packages) and you review that before
+installing. A later update that asks for more stops for review again.
+
+Apps run in a sandbox and reach the engine only through a short list of allowed
+calls. [SECURITY.md](SECURITY.md) describes the boundaries.
+
+To move an app to another device, or keep a copy before uninstalling, use
+**Export app** in its info pane, then **Import app > Backup file** on the other
+side. The backup carries the app's data and keeps updating from where it came
+from.
+
+## Updating
+
+Molfar Vertep keeps your data in its own folder, so an update never touches it.
+
+- **Updates button in the top bar.** It shows a badge when anything is newer and
+  opens one panel with Molfar Vertep itself (for admins) and every app installed
+  from a repository. Each row shows the current and new version, a link to the
+  changes and an Update button; "Update all" goes through the apps one by one.
+  If your own edits overlap with an update, you choose: keep yours, take the
+  update, or ask the agent to merge. Checks run when Molfar Vertep starts and on
+  "Check now". See [CHANGELOG.md](CHANGELOG.md) for details.
+- Downloads (Windows, macOS, Linux, portable): the engine's update button
+  downloads the new version, restarts and reloads the page. It is also in
+  **Settings > Server**.
+- Android: remove the old app and install the new APK (see the note above).
+- Docker: `docker pull ghcr.io/molfarwav/molfar-vertep:latest`, then remove and
+  recreate the container with the same volume.
+- From source: `git pull && bun install && (cd client-agent && bun install) && bun run build:client`,
+  then restart.
+
+Apps you have changed are never overwritten: updating merges the new version
+with your edits.
+
+## Languages
+
+The interface comes in 14 languages, including Ukrainian (Українська). Pick one
+in **Settings > General > Language**; it is chosen automatically from your
+browser's language when it is one of them.
+
+## Bring your own tools
+
+Your whole workspace is a folder of plain files under git. Run `chrysalis
+workspace` in a terminal (Molfar Vertep makes itself a command the first time it
+starts, so there is nothing to install; open a new terminal if it was already
+running). It prints where the workspace is; point your editor or coding agent at
+it and work normally, saves reach open pages on their own. `AGENTS.md` there
+explains the layout to whatever agent reads it. For the parts that are not
+files, `./chrysalis api GET /v1/apps` calls the running engine's API.
 
 ## Settings file
 
@@ -98,7 +156,7 @@ every line. `chrysalis paths` prints where it is:
 | Windows | `%LOCALAPPDATA%\Chrysalis` |
 | macOS | `~/Library/Application Support/Chrysalis` |
 | Linux | `~/.local/share/chrysalis` |
-| Docker | the `/chrysalis` volume (`./chrysalis-data`) |
+| Docker | the `/chrysalis` volume |
 | From source | the repository folder |
 
 Put a `config.yaml` next to the program to keep everything in that folder instead
@@ -127,54 +185,20 @@ chrysalis --help
 
 ## Using it from your phone
 
-- **Chrysalis on your computer, phone on the same Wi-Fi:** turn on
+- **Molfar Vertep on your computer, phone on the same Wi-Fi:** turn on
   *Allow other devices on my network* in Settings > Server and scan the QR code.
-- **Chrysalis on the phone itself:** install the Android app. It runs the server
-  on the phone and opens it in your browser. Uninstalling the app deletes its
-  data, so export backups from your apps first.
+- **Molfar Vertep on the phone itself:** install the Android app. It runs the
+  server on the phone and opens it in your browser. Uninstalling the app deletes
+  its data, so export backups from your apps first.
 - **Away from home:** put both devices on [Tailscale](https://tailscale.com) and
   use the computer's Tailscale address. `tailscale cert` gives you HTTPS files
   for `ssl.certPath` and `ssl.keyPath`.
 
-## Updating
-
-Chrysalis keeps your data in its own folder, so an update never touches it.
-
-- Downloads (Windows, macOS, Linux, portable): when a new version is out, an
-  **Update to X** button appears at the bottom of the **Where to?** page (the
-  page every new tab opens on) and in **Settings > Server**. Click it: Chrysalis
-  downloads the update, restarts, and reloads the page.
-- Android: install the new APK over the old one.
-- Bun: `bun add -g chrysalis-engine@latest`.
-- Docker: `docker compose pull && docker compose up -d` (the `:staging` tag for
-  staging), or `git pull && docker compose up -d --build` to build it yourself.
-- From source: `git pull && bun install && (cd client-agent && bun install) && bun run build:client`, then restart.
-
-Apps you have changed are never overwritten: the **Where to?** page marks apps
-with an update, and updating merges it with your edits. To move an app to another device, or keep a copy
-before uninstalling, use **Export app** in its info pane, then **Import app >
-Backup file** on the other side. The backup carries the app's data and keeps
-updating from where it came from.
-
-## Running from source
-
-```sh
-git clone https://github.com/ProjectChrysalis/Chrysalis-Engine
-cd Chrysalis-Engine
-bun install
-(cd client-agent && bun install)
-bun run build:client
-bun start
-```
-
-`bun run dev` restarts on every change. `bun test` runs the suite and
-`bun run typecheck` checks every project.
-
-### Release builds
+## Release builds
 
 ```sh
 bun run dist                      # every platform, from any one machine
-bun run dist linux-x64 npm        # some of them
+bun run dist linux-x64 windows-x64   # some of them
 ANDROID_HOME=~/android-sdk bun run dist android-apk   # the APK (JDK 17+)
 ```
 
@@ -183,38 +207,28 @@ Output lands in `out/dist/`. Set `CHRYSALIS_ANDROID_KEYSTORE`,
 `CHRYSALIS_ANDROID_KEY_PASSWORD` to sign the APK for release; keep that keystore,
 since Android only updates an app signed with the same key.
 
-## Community
+Releases are built by `.github/workflows/release.yml` when a `vX.Y.Z` tag that
+matches `package.json` is pushed on `main`. Every push and pull request runs the
+tests and builds every download.
 
-Questions, ideas and apps you have built: join the
-[Project Chrysalis Discord](https://discord.gg/maFVqyeD4Q). Bugs go in
-[GitHub issues](https://github.com/ProjectChrysalis/Chrysalis-Engine/issues).
+## Support
 
-<a href="https://www.star-history.com/#projectchrysalis/chrysalis-engine&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=projectchrysalis/chrysalis-engine&type=Date&theme=dark" />
-    <img src="https://api.star-history.com/svg?repos=projectchrysalis/chrysalis-engine&type=Date" alt="Star history chart" width="600" />
-  </picture>
-</a>
-
-## Branches and contributing
-
-- `main` is stable. Releases are tagged here.
-- `staging` is where new work lands first. Open pull requests against `staging`.
-
-Every push and pull request runs the tests and builds every download, then
-starts each one on Windows, macOS, Linux and in Docker. To release, merge
-`staging` into `main`, set the version in `package.json`, and push a tag:
-`git tag v1.2.3 && git push origin v1.2.3`.
+- Bugs and questions: [GitHub issues](https://github.com/MolfarWav/Molfar.Vertep/issues).
+- Security problems: report them privately through the **Security** tab of the
+  repository (a private vulnerability report), not as a public issue.
 
 ## License
 
 Licensed under the **GNU Affero General Public License v3.0 only** (AGPL-3.0-only).
-See [LICENSE](LICENSE) for the full text.
+See [LICENSE](LICENSE) for the full text. The source is at
+[MolfarWav/Molfar.Vertep](https://github.com/MolfarWav/Molfar.Vertep); if you run
+a modified copy for other people over a network, the AGPL requires you to offer
+them your source.
 
 ## Inspiration
 
-Chrysalis was inspired by [pi](https://pi.dev), the minimal coding agent you
-adapt by asking it to build what you need. Chrysalis brings that idea to an AI
+The idea comes from [pi](https://pi.dev), the minimal coding agent you adapt by
+asking it to build what you need. Molfar Vertep brings that idea to an AI
 frontend, and its agent runs on pi's own libraries.
 
 ## Built on

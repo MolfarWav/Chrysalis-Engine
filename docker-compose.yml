@@ -1,7 +1,7 @@
 services:
   chrysalis:
     # the published image; `docker compose up -d --build` builds this checkout instead
-    image: ghcr.io/projectchrysalis/chrysalis-engine:latest
+    image: ghcr.io/molfarwav/molfar-vertep:latest
     build: .
     container_name: chrysalis
     restart: unless-stopped
@@ -10,7 +10,7 @@ services:
     volumes:
       - ./chrysalis-data:/chrysalis
     # The first start prints a setup link: `docker compose logs chrysalis`.
-    # Opening Chrysalis by a name rather than an IP address (a reverse proxy,
+    # Opening Molfar Vertep by a name rather than an IP address (a reverse proxy,
     # a local DNS name) needs that name listed:
     # environment:
     #   CHRYSALIS_ALLOWED_HOSTS: chrysalis.home

@@ -368,7 +368,7 @@ export function importProject(root: string, zip: Uint8Array, name?: string): Pro
     if (!isProject(dir)) {
       const top = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.name !== "__MACOSX");
       const only = top.length === 1 && top[0]?.isDirectory() ? top[0].name : undefined;
-      if (!only || !isProject(path.join(dir, only))) throw new ProjectError("not a Chrysalis project (no project.json or PROJECT.md in the zip)");
+      if (!only || !isProject(path.join(dir, only))) throw new ProjectError("not a Molfar Vertep project (no project.json or PROJECT.md in the zip)");
       found = path.join(dir, only);
       folder = only;
     }

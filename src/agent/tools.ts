@@ -568,7 +568,7 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
     name: "app_check",
     label: "Check app build",
     description:
-      "Build an app's current sources and return the result: ok, or the build errors with file and line. Runtime errors the app frame caught since the sources last built (uncaught throws, unhandled rejections, console.error) ride along, so a clean build that crashes on open is visible too. The build runs in the user's browser (their open Chrysalis page builds it), so this waits for it; if nothing builds within the wait it says so instead of guessing. Call after editing src/ or package.json to verify your work.",
+      "Build an app's current sources and return the result: ok, or the build errors with file and line. Runtime errors the app frame caught since the sources last built (uncaught throws, unhandled rejections, console.error) ride along, so a clean build that crashes on open is visible too. The build runs in the user's browser (their open Molfar Vertep page builds it), so this waits for it; if nothing builds within the wait it says so instead of guessing. Call after editing src/ or package.json to verify your work.",
     parameters: Type.Object({
       id: Type.String({ description: "App id" }),
       wait_ms: Type.Optional(Type.Number({ description: "How long to wait for the build (default 60000, max 180000)" })),
@@ -608,7 +608,7 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
       }
       const last = readBuildStatus(dir);
       return textResult(
-        `No build landed within ${Math.round(waitMs / 1000)}s. Builds run in the user's browser in an open Chrysalis page; if none is open, nothing can build. ` +
+        `No build landed within ${Math.round(waitMs / 1000)}s. Builds run in the user's browser in an open Molfar Vertep page; if none is open, nothing can build. ` +
           (last
             ? `The last finished build covers older sources (${last.ok ? "ok" : `${last.errors.length} error(s)`}).`
             : "No build has ever finished for this app."),
@@ -649,7 +649,7 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
         }
       }
       return textResult(
-        `No rebuild landed within ${Math.round(waitMs / 1000)}s. Builds run in the user's browser: a Chrysalis page must be open for one to happen.`,
+        `No rebuild landed within ${Math.round(waitMs / 1000)}s. Builds run in the user's browser: a Molfar Vertep page must be open for one to happen.`,
         { id, rev, rebuilt: false, timedOut: true },
       );
     },
@@ -659,7 +659,7 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
     name: "app_console",
     label: "Read app console",
     description:
-      "Recent console output from an app's open pages: console.log/info/warn/debug prints plus caught runtime errors, newest last, only for the current sources. Use it like a test log: add a console.log, let the open tab run, then read it here. Nothing is captured unless a Chrysalis page with the app open is running.",
+      "Recent console output from an app's open pages: console.log/info/warn/debug prints plus caught runtime errors, newest last, only for the current sources. Use it like a test log: add a console.log, let the open tab run, then read it here. Nothing is captured unless a Molfar Vertep page with the app open is running.",
     parameters: Type.Object({
       id: Type.String({ description: "App id" }),
       limit: Type.Optional(Type.Number({ description: "How many entries, newest last (default 30, max 200)" })),
@@ -686,7 +686,7 @@ export function buildUserTools(username: string, p: UserPaths, opts: AgentToolOp
         .slice(-limit);
       if (!entries.length) {
         return textResult(
-          `No console output for apps/${id} on the current sources. Prints are only captured while a Chrysalis page has the app open: add a console.log, open the app, then read again.`,
+          `No console output for apps/${id} on the current sources. Prints are only captured while a Molfar Vertep page has the app open: add a console.log, open the app, then read again.`,
           { id, rev, entries: 0 },
         );
       }

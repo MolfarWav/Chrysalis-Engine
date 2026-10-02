@@ -3,7 +3,7 @@ name: app-authoring
 description: Use before you build or change an app, a plugin, a manifest or an app's UI (src/, index.html, package.json). The plugin contract, the host API, the UI build rules and the checks. Triggers: "зроби застосунок", "новий плагін", "зміни інтерфейс", "додай кнопку", "build an app", "write a plugin".
 ---
 
-# Building apps and plugins in Chrysalis
+# Building apps and plugins in Molfar Vertep
 
 The engine contract for app and plugin code. Read the app's own `AGENTS.md` and
 `data/README.md` first when they exist: they name its files, field shapes and

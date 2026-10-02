@@ -75,7 +75,7 @@ export class ServerSettings {
   update(changes: Record<string, unknown>): { info: ServerInfo; moved: boolean } | { error: string } {
     const { loaded } = this.opts;
     for (const key of Object.keys(changes)) {
-      if (key === "dataRoot") return { error: "the data folder can only be changed in config.yaml while Chrysalis is stopped" };
+      if (key === "dataRoot") return { error: "the data folder can only be changed in config.yaml while Molfar Vertep is stopped" };
       if (!EDITABLE.has(key)) return { error: `unknown setting: ${key}` };
     }
     const nextFile = applySettings(loaded.file, changes);

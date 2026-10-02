@@ -1,8 +1,11 @@
 # Molfar Vertep: how to work here
 
-Molfar Vertep (repo MolfarWav/Molfar.Vertep) is a fork of Chrysalis Engine (AGPL-3.0-only,
-upstream ProjectChrysalis/Chrysalis-Engine). The product name shows as "Molfar Vertep";
-internal names (`chrysalis` command, paths, env vars, identifiers) stay upstream's so merges stay clean.
+Molfar Vertep (repo MolfarWav/Molfar.Vertep) began as a fork of Chrysalis Engine (AGPL-3.0-only)
+and is now independent: nothing is merged from upstream ProjectChrysalis and no new PRs go there
+(decided 2026-10-02). Keep only the AGPL minimum: the README's "modified fork of Chrysalis Engine"
+notice and the license. Everything users see says Molfar Vertep. Internal names (`chrysalis`
+command, `CHRYSALIS_*` env vars, data paths, release archive names) stay until a planned rename
+with data migration, on the user's word only.
 Start every session with `.fork/STATE.md`, then the handoff it points to. This file
 holds the rules that do not change between tasks; the handoff holds the task.
 
@@ -33,7 +36,8 @@ holds the rules that do not change between tasks; the handoff holds the task.
 - The agent's system prompt is built once per agent instance: anything that changes what goes into it must `evictAgents` or change the docs/project stamp.
 - Agent write limits live in code, not in the prompt: `AGENT_WRITE_DENYLIST` (never) and `protect.ts` (ask the user first). Memory and skills change only through the confirmed tools.
 - Never a model name in a commit, file or PR. Commit style: `area: what changed, in plain words`, a body saying why, then the attribution lines the harness gives.
-- `.fork/`, `CLAUDE.md` and `.claude/skills/` stay out of upstream PRs (those go on `claude/upstream-*` branches built from upstream staging).
+- No upstream merges, no new upstream PRs. The one already open (`claude/upstream-context-fixes`) is left as it is.
+- Our own catalogs: the Store list is `MolfarWav/Molfar.Vertep-Store` (`apps.json`), official apps are MolfarWav only (`OFFICIAL_SOURCES`).
 - The session's git proxy cannot delete remote branches; the user deletes old ones on GitHub.
 
 ## Done means

@@ -180,7 +180,7 @@ export function locateBackup(dir: string): { root: string; meta: BackupMeta | nu
   if (!fs.existsSync(path.join(root, "manifest.json"))) {
     const top = fs.readdirSync(root, { withFileTypes: true }).filter((e) => e.name !== "__MACOSX");
     const only = top.length === 1 && top[0]?.isDirectory() ? path.join(root, top[0].name) : null;
-    if (!only || !fs.existsSync(path.join(only, "manifest.json"))) throw new BackupError("not a Chrysalis app (no manifest.json in the zip)");
+    if (!only || !fs.existsSync(path.join(only, "manifest.json"))) throw new BackupError("not a Molfar Vertep app (no manifest.json in the zip)");
     root = only;
   }
   return { root, meta: readBackupMeta(root) };

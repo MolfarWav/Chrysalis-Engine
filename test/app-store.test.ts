@@ -26,8 +26,8 @@ const entry = (over: Record<string, unknown> = {}) => ({
   id: "roleplay",
   name: "Roleplay",
   description: "A roleplay studio.",
-  author: "Project Chrysalis",
-  repository: "https://github.com/ProjectChrysalis/Roleplay-Chrysalis",
+  author: "Molfar Vertep",
+  repository: "https://github.com/MolfarWav/Molfar.Vertep-Roleplay",
   tags: ["roleplay"],
   added: "2026-09-13",
   ...over,
@@ -55,18 +55,20 @@ describe("store list", () => {
     expect(parseCatalog(null)).toEqual([]);
   });
 
-  it("official means a repository directly under a maintainers' owner", () => {
-    expect(isOfficialSource("https://github.com/ProjectChrysalis/Roleplay-Chrysalis")).toBe(true);
-    expect(isOfficialSource("https://GitHub.com/projectchrysalis/roleplay.git/")).toBe(true);
+  it("official means a repository directly under Molfar Vertep's owner", () => {
     expect(isOfficialSource("https://github.com/MolfarWav/Molfar.Vertep-Roleplay")).toBe(true);
+    expect(isOfficialSource("https://GitHub.com/molfarwav/roleplay.git/")).toBe(true);
     for (const url of [
-      "https://github.com/ProjectChrysalisX/app",
-      "https://github.com/someone/ProjectChrysalis",
-      "https://github.com/ProjectChrysalis/a/b",
-      "https://github.com/ProjectChrysalis/..",
-      "https://github.com/ProjectChrysalis/",
-      "http://github.com/ProjectChrysalis/app",
-      "git@github.com:ProjectChrysalis/app",
+      "https://github.com/MolfarWavX/app",
+      "https://github.com/someone/MolfarWav",
+      "https://github.com/MolfarWav/a/b",
+      "https://github.com/MolfarWav/..",
+      "https://github.com/MolfarWav/",
+      "http://github.com/MolfarWav/app",
+      "git@github.com:MolfarWav/app",
+      // upstream apps are third-party now
+      "https://github.com/ProjectChrysalis/Roleplay-Chrysalis",
+      "https://github.com/ProjectChrysalis/app",
     ]) {
       expect(isOfficialSource(url), url).toBe(false);
     }
@@ -496,12 +498,12 @@ describe("installing from the store", () => {
     expect(adoptFormerlyShipped(p)).toEqual([]);
     // seeded by the engine (it wrote the baseline): adopted once
     writeBaseline(p.appUpstream, "roleplay", "4.16.1", readCodeTree(path.join(p.apps, "roleplay")));
-    expect(adoptFormerlyShipped(p)).toEqual([{ id: "roleplay", repository: "https://github.com/ProjectChrysalis/Roleplay-Chrysalis" }]);
+    expect(adoptFormerlyShipped(p)).toEqual([{ id: "roleplay", repository: "https://github.com/MolfarWav/Molfar.Vertep-Roleplay" }]);
     expect(adoptFormerlyShipped(p)).toEqual([]);
-    expect(readInstallSource(p.appUpstream, "roleplay")).toEqual({ git: "https://github.com/ProjectChrysalis/Roleplay-Chrysalis", ref: "HEAD" });
+    expect(readInstallSource(p.appUpstream, "roleplay")).toEqual({ git: "https://github.com/MolfarWav/Molfar.Vertep-Roleplay", ref: "HEAD" });
     const manifest = JSON.parse(fs.readFileSync(path.join(p.apps, "roleplay", "manifest.json"), "utf8")) as Record<string, unknown>;
     expect(manifest.official).toBeUndefined();
-    expect(manifest.source).toEqual({ git: "https://github.com/ProjectChrysalis/Roleplay-Chrysalis", ref: "HEAD" });
+    expect(manifest.source).toEqual({ git: "https://github.com/MolfarWav/Molfar.Vertep-Roleplay", ref: "HEAD" });
   });
 
   it("an app's engine range is read in upstream's numbers, not the fork's own version", async () => {

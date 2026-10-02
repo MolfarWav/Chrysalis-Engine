@@ -65,7 +65,7 @@ jobs:
       # never see one with its downloads half uploaded
       - name: GitHub release
         run: |
-          # fork: the body comes from .fork/release-notes/<version>.md when it exists
+          # the body comes from .fork/release-notes/<version>.md when it exists
           notes=".fork/release-notes/${GITHUB_REF_NAME#v}.md"
           if [ -f "$notes" ]; then body=(--notes-file "$notes"); else body=(--generate-notes); fi
           gh release create "$GITHUB_REF_NAME" \
@@ -75,25 +75,21 @@ jobs:
             "${body[@]}" \
             assets/*.zip assets/*.tar.gz assets/*.apk
           gh release edit "$GITHUB_REF_NAME" --draft=false --latest
-      # fork: the image registry is upstream's; only upstream pushes to it
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
-        if: github.repository == 'ProjectChrysalis/Chrysalis-Engine'
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        if: github.repository == 'ProjectChrysalis/Chrysalis-Engine'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
       - name: Docker image
-        if: github.repository == 'ProjectChrysalis/Chrysalis-Engine'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ghcr.io/projectchrysalis/chrysalis-engine:latest
-            ghcr.io/projectchrysalis/chrysalis-engine:${{ github.ref_name }}
+            ghcr.io/molfarwav/molfar-vertep:latest
+            ghcr.io/molfarwav/molfar-vertep:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

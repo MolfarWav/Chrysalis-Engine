@@ -937,7 +937,7 @@ describe("A2 the bridge's second lock (server side)", () => {
       fs.mkdirSync(path.join(p.apps, id), { recursive: true });
       fs.writeFileSync(path.join(p.apps, id, "manifest.json"), JSON.stringify({ name: id, version: "1", kind: "app" }));
     }
-    writeInstallSource(p.appUpstream, "roleplay", { git: "https://github.com/ProjectChrysalis/Roleplay", ref: "HEAD" });
+    writeInstallSource(p.appUpstream, "roleplay", { git: "https://github.com/MolfarWav/Molfar.Vertep-Roleplay", ref: "HEAD" });
     const put = async (appId: string | null, body: string) => {
       const res = await app.request("/v1/assets?name=x.png", { method: "PUT", headers: { authorization: `Bearer ${token}`, "content-type": "image/png", ...(appId ? { "x-chrysalis-app": appId } : {}) }, body });
       return ((await res.json()) as { id: string }).id;

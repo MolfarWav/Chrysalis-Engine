@@ -1368,7 +1368,7 @@ ${installedAppsSection(paths)}An app's own AGENTS.md and data/README.md name its
   // active app's, and an index of the user's own notes. Last, so that where
   // they disagree with the general prompt above, they are what was read most
   // recently — these files describe THIS install, the prompt above describes
-  // Chrysalis in general.
+  // Molfar Vertep in general.
   const docs = instructionDocs(paths);
   if (docs) out += `\n\n${docs}`;
   return out + notesAndPersona(paths, username);
@@ -1402,12 +1402,12 @@ function compactPromptFor(username: string, isAdmin: boolean, paths: UserPaths, 
 /** What a server setting change means for the person approving it, in the
  *  engine's words (the agent never writes the approval text). */
 const SETTING_EFFECTS: Record<string, (value: unknown) => string> = {
-  lan: (v) => (v ? "Other devices on your network will be able to open Chrysalis (accounts still need their passwords)." : "Only this computer will be able to open Chrysalis."),
-  port: (v) => `Chrysalis will move to port ${String(v)}; open pages follow it.`,
-  "ssl.enabled": (v) => (v ? "Chrysalis will switch to HTTPS using the certificate files." : "Chrysalis will switch to plain HTTP."),
+  lan: (v) => (v ? "Other devices on your network will be able to open Molfar Vertep (accounts still need their passwords)." : "Only this computer will be able to open Molfar Vertep."),
+  port: (v) => `Molfar Vertep will move to port ${String(v)}; open pages follow it.`,
+  "ssl.enabled": (v) => (v ? "Molfar Vertep will switch to HTTPS using the certificate files." : "Molfar Vertep will switch to plain HTTP."),
   "apps.packageDownloads": (v) => (v ? "Apps will be able to download npm packages." : "Apps will no longer download npm packages."),
   "agent.shell": (v) => (v ? "The agent's command shell will be turned on." : "The agent's command shell will be turned off."),
-  allowedHosts: (v) => `These names will be allowed to open Chrysalis: ${Array.isArray(v) && v.length ? v.join(", ") : "none"}.`,
+  allowedHosts: (v) => `These names will be allowed to open Molfar Vertep: ${Array.isArray(v) && v.length ? v.join(", ") : "none"}.`,
 };
 
 export function buildAdminTools(
@@ -1465,7 +1465,7 @@ export function buildAdminTools(
     // approval goes through the same single ask card as admin_create_user
     ...(server.ask ? { executionMode: "sequential" as const } : {}),
     description:
-      "Read or change this Chrysalis server's settings (config.yaml): port, lan (other devices on the network), allowedHosts, ssl.enabled/certPath/keyPath, openBrowser, apps.packageDownloads, agent.shell, agent.shellTimeoutSeconds, defaultModel. action \"read\" shows the values, where the file is, and the addresses Chrysalis answers on. action \"change\" takes changes as { setting: value } and asks the user to approve before anything is saved; the user can decline.",
+      "Read or change this Molfar Vertep server's settings (config.yaml): port, lan (other devices on the network), allowedHosts, ssl.enabled/certPath/keyPath, openBrowser, apps.packageDownloads, agent.shell, agent.shellTimeoutSeconds, defaultModel. action \"read\" shows the values, where the file is, and the addresses Molfar Vertep answers on. action \"change\" takes changes as { setting: value } and asks the user to approve before anything is saved; the user can decline.",
     parameters: Type.Object({
       action: Type.Union([Type.Literal("read"), Type.Literal("change")]),
       changes: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "For change: dotted setting name to new value, e.g. { \"lan\": true }" })),

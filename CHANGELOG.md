@@ -14,6 +14,9 @@ Versions here count from 0.1.0 and are independent of upstream's.
 - **Default instructions are short preferences now** (plain words, short answers, flag weak ideas); the rules moved to the base prompt, so each request no longer pays for them twice. A copy you never edited moves to the new default on the next start; an edited one stays yours.
 - **Settings > Agent shows the workspace contract (AGENTS.md)**: whether it is the default, edited or outdated, with "Restore default" (the old text stays in the workspace history).
 - **Built-in skills update again**: a workspace copy identical to a built-in skill is removed on start, so the engine's newer version reaches you. New built-in skill `default-prompts`: how a plugin ships a prompt with a default, restore and a language line.
+- **Molfar Vertep is independent of Chrysalis now.** Nothing is merged from upstream any more. Everything you see and everything the agent reads says Molfar Vertep; only the internal names (`chrysalis` command, `CHRYSALIS_*` settings, data folders, download file names) stay for now, so installs keep working.
+- **The Store reads Molfar Vertep's own catalog**, [MolfarWav/Molfar.Vertep-Store](https://github.com/MolfarWav/Molfar.Vertep-Store). A config.yaml that still names the old Chrysalis list moves to the new one on start. Official apps are the ones under MolfarWav; apps from anywhere else, upstream Chrysalis included, are reviewed before install like any community app.
+- README rewritten for Molfar Vertep. The Chrysalis Discord link is gone from the start screen; issues and security reports go to this repository. The Docker image is `ghcr.io/molfarwav/molfar-vertep`.
 
 ## 0.2.0 (2026-10-02)
 

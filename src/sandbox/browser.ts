@@ -75,7 +75,7 @@ export class BrowserSandbox implements SandboxRunner {
       available: ready > 0,
       reason: ready
         ? "commands run in this browser, in a WebAssembly sandbox (wasmsh): bash + 88 utilities and Python, workspace mounted at /workspace, internet when the user allows it, no host access"
-        : "no sandbox is connected — open Chrysalis in a browser tab to run shell commands (they never run on the host)",
+        : "no sandbox is connected — open Molfar Vertep in a browser tab to run shell commands (they never run on the host)",
       running: this.pending.size,
       unsafe: false,
       isolation: "wasm",
@@ -85,7 +85,7 @@ export class BrowserSandbox implements SandboxRunner {
   async run(username: string, _userRoot: string, input: SandboxRunInput): Promise<SandboxRunResult | { error: string }> {
     if (this.cfg.provider === "off") return { error: "the shell is off on this instance (agent.shell in config.yaml)" };
     const h = this.host(username);
-    if (!h) return { error: "No sandbox is connected. Open Chrysalis in a browser tab; commands run there, never on the host." };
+    if (!h) return { error: "No sandbox is connected. Open Molfar Vertep in a browser tab; commands run there, never on the host." };
     if (!h.ready) return { error: "The browser sandbox is still starting up. Try again in a moment." };
     const timeout = Math.min(Math.max(1000, Math.floor(input.timeoutMs ?? this.cfg.timeoutMs)), this.cfg.timeoutMs);
     const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);

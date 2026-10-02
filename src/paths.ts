@@ -209,10 +209,10 @@ apps/*/.project/files/
  * the built-in agent directly. No secrets: the file is git-tracked. Its job:
  * teach the file-first contract + how to drive the engine.
  */
-const AGENTS_MD_VERSION = 13;
-const USER_AGENTS_MD_BODY = `# Chrysalis workspace
+const AGENTS_MD_VERSION = 14;
+const USER_AGENTS_MD_BODY = `# Molfar Vertep workspace
 
-Everything here is files you can edit like code — this user's whole Chrysalis world. The engine hot-reloads as you save.
+Everything here is files you can edit like code — this user's whole Molfar Vertep world. The engine hot-reloads as you save.
 
 ## Git (who commits what)
 - The repo is preconfigured (identity, reflog): an agent running on the host uses plain \`git add/commit/log/reflog\`; the built-in agent's browser sandbox has no git binary, so it commits through its \`git\` tool (status, diff, log, commit, restore, revert…) on this same repo.
@@ -233,7 +233,7 @@ Everything here is files you can edit like code — this user's whole Chrysalis 
 
 ## Driving the engine (optional — files alone cover most work)
 The local engine also exposes HTTP:
-- API base: \`<the address Chrysalis prints at start>/v1\`, by default \`http://127.0.0.1:8788/v1\` (auth: the user's bearer token / session). The port is set in the engine's config.yaml, which lives outside this workspace.
+- API base: \`<the address Molfar Vertep prints at start>/v1\`, by default \`http://127.0.0.1:8788/v1\` (auth: the user's bearer token / session). The port is set in the engine's config.yaml, which lives outside this workspace.
 
 ## Where a change goes
 Pick the lightest place that can carry the change. All three are supported and all three survive an app update — an update is a three-way merge against the version the app was installed from, so your edits are kept and only an edit that overlaps the same lines as the update conflicts (and then nothing is written until the user picks how to settle it). App \`data/\` is never part of an update at all.
@@ -243,7 +243,7 @@ Pick the lightest place that can carry the change. All three are supported and a
 Read the app's own AGENTS.md before deciding: it says which of its behavior is already data-driven, and reaching for \`src/\` for something a data file already controls is the one wrong answer here.
 
 ## Rules
-- Never touch anything outside this workspace: the engine's credentials store, other users' directories, and the Chrysalis engine's own install (source, deps, git repo) are off-limits — the user updates the engine themselves.
+- Never touch anything outside this workspace: the engine's credentials store, other users' directories, and the Molfar Vertep engine's own install (source, deps, git repo) are off-limits — the user updates the engine themselves.
 - Prefer relative paths from the workspace root; this directory is your whole world.
 - Plugin files are ES modules (export function handleRoute(req, host) {…}) — never CommonJS.
 - After editing plugins/manifests, the engine hot-reloads; if unsure, ask the user to refresh.
@@ -406,7 +406,7 @@ export function ensureNotesDir(dataDir: string, username: string): boolean {
 const NOTES_README = `# Notes
 
 Plans, specs and reference material for your agent. This directory is yours —
-Chrysalis seeds this one file and never writes here again.
+Molfar Vertep seeds this one file and never writes here again.
 
 Your agent sees every file in here listed by name and first line on every
 request, and reads the ones that matter before it starts work. So:
@@ -436,7 +436,7 @@ learn:
     Check the diff for anything that would break a chat that is already open,
     then tell me what you found. Do not change anything yet.
 
-Chrysalis seeds this one file and never writes here again. Delete it once you
+Molfar Vertep seeds this one file and never writes here again. Delete it once you
 have commands of your own.
 `;
 

@@ -141,7 +141,7 @@ export async function checkProgram(program: string, version: string): Promise<vo
     throw new Error(`the new version does not run on this computer: ${(e as Error).message.split("\n")[0]}`);
   }
   const said = out.trim().split("\n").pop()?.trim() ?? "";
-  if (said !== version) throw new Error(`the download says it is Chrysalis ${said || "(nothing)"}, not ${version}`);
+  if (said !== version) throw new Error(`the download says it is Molfar Vertep ${said || "(nothing)"}, not ${version}`);
 }
 
 /** Set aside a name an earlier version may still be running from. */
@@ -247,7 +247,7 @@ export function dropEngineFiles(dataDir: string): void {
 /** Download and install a release, then restart into it. Runs in the
  *  background; updateState() reports progress. */
 export function startUpdate(version: string, asset: ReleaseAsset, restart: () => Promise<void>): UpdateState {
-  if (!SELF_UPDATE) return { phase: "failed", error: "this copy of Chrysalis cannot update itself" };
+  if (!SELF_UPDATE) return { phase: "failed", error: "this copy of Molfar Vertep cannot update itself" };
   if (state.phase === "downloading" || state.phase === "installing" || state.phase === "restarting") return state;
   state = { phase: "downloading", version };
   void installUpdate(programDir(), version, asset, restart);
@@ -298,13 +298,13 @@ export async function installUpdate(
       await checkProgram(path.join(fresh, exe), version);
       swapProgram(dir, fresh, exe);
       fs.rmSync(work, { recursive: true, force: true });
-      log.info(`[update] installed Chrysalis ${version}, restarting`);
+      log.info(`[update] installed Molfar Vertep ${version}, restarting`);
       state = { phase: "restarting", version };
       await restart();
     } catch (e) {
       const code = (e as NodeJS.ErrnoException).code;
       const error = code === "EACCES" || code === "EPERM" || code === "EBUSY"
-        ? `Chrysalis could not replace its own files in ${dir} (${code}). If another program has them open, close it and try again; if your account cannot write there, move the folder somewhere it can.`
+        ? `Molfar Vertep could not replace its own files in ${dir} (${code}). If another program has them open, close it and try again; if your account cannot write there, move the folder somewhere it can.`
         : (e as Error).message;
       log.warn(`[update] ${error}`);
       state = { phase: "failed", version, error };
@@ -356,7 +356,7 @@ function mirror(
   };
   child.on("exit", end);
   child.on("error", (e) => {
-    log.error(`[update] could not start Chrysalis: ${e.message}`);
+    log.error(`[update] could not start Molfar Vertep: ${e.message}`);
     end(1, null);
   });
   return child;
@@ -394,12 +394,12 @@ export function runReplacement(options: ReplacementOptions): void {
     clearInterval(watch);
     if (proven || stopRequested) return exitWith(code, signal);
     const reason = signal ? `stopped by ${signal}` : `exited with code ${code}`;
-    const error = `Chrysalis ${target} stopped before it finished starting (${reason}), so Chrysalis went back to ${ENGINE_VERSION}. The log has the details.`;
+    const error = `Molfar Vertep ${target} stopped before it finished starting (${reason}), so Molfar Vertep went back to ${ENGINE_VERSION}. The log has the details.`;
     log.error(`[update] ${error}`);
     try {
       restoreProgram(opts.dir, opts.exe);
     } catch (e) {
-      log.error(`[update] could not put Chrysalis ${ENGINE_VERSION} back: ${(e as Error).message}`);
+      log.error(`[update] could not put Molfar Vertep ${ENGINE_VERSION} back: ${(e as Error).message}`);
       return exitWith(1, null);
     }
     if (saved) {
@@ -429,7 +429,7 @@ export function runReplacement(options: ReplacementOptions): void {
       proven = true;
       clearInterval(watch);
       dropEngineFiles(dataDir);
-      log.info(`[update] Chrysalis ${target} is running`);
+      log.info(`[update] Molfar Vertep ${target} is running`);
     })();
   }, Math.min(1000, Math.max(100, proveMs / 5)));
   watch.unref();

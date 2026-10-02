@@ -112,6 +112,6 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           build-args: CHRYSALIS_VERSION=${{ env.VERSION }}
-          tags: ghcr.io/projectchrysalis/chrysalis-engine:staging
+          tags: ghcr.io/molfarwav/molfar-vertep:staging
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -13,6 +13,7 @@ Fork-only. The version line is the fork's own (0.1.0, 0.2.0, ...), independent o
    - Then `## Other changes`: minor and technical items, one line each.
    - End with how to get it (source, downloads, app updates) and a link to CHANGELOG.md.
    - Every claim checked against the code or the app's CHANGELOG; nothing that ships later.
+   - Written in English (GitHub release pages are English; the user's rule, 2026-10-02).
 6. **Main:** the release is built only from a tag on `main`. Fast-forward main to the release commit: `git push origin HEAD:main` (main must be an ancestor of the branch; merge first if it is not).
 7. **The tag (the user does this, the session proxy cannot push tags):** from a terminal in the engine folder:
    ```

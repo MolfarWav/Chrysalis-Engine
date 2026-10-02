@@ -189,7 +189,7 @@ export function AppUpdateBanner(props: { update: AppUpdateHandle; inset?: boolea
             </Button> : null}
         </div>
         {s.engine ? <p className="text-11 text-ink-muted">
-            {tr("Needs Chrysalis engine {engine}. This engine is {current}.", { engine: s.engine, current: "v" + s.engineVersion })}
+            {tr("Needs app contract {engine}. This engine supports {current}.", { engine: s.engine, current: "v" + s.engineVersion })}
           </p> : null}
       </div>
     )

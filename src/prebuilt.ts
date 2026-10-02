@@ -15,7 +15,7 @@ export interface PrebuiltFiles {
 
 export async function readPrebuilt(dir: string): Promise<PrebuiltFiles> {
   const manifestFile = path.join(dir, "manifest.json");
-  if (!fs.existsSync(manifestFile)) throw new Error(`missing ${manifestFile}: this copy of Chrysalis is incomplete, reinstall it`);
+  if (!fs.existsSync(manifestFile)) throw new Error(`missing ${manifestFile}: this copy of Molfar Vertep is incomplete, reinstall it`);
   const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8")) as { version: string; files: Record<string, string> };
   const files: PrebuiltFiles["files"] = new Map();
   for (const [name, type] of Object.entries(manifest.files)) {

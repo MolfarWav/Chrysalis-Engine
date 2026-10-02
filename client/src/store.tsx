@@ -10,7 +10,7 @@ import { IconSmall } from "./ui/icon"
 import { cn } from "./ui/cn"
 import { tr } from "./i18n/index"
 
-const STORE_REPOSITORY = "https://github.com/ProjectChrysalis/app-store"
+const STORE_REPOSITORY = "https://github.com/MolfarWav/Molfar.Vertep-Store"
 
 const latestAdded = (apps: StoreApp[]): string | null =>
   apps.reduce<string | null>((max, a) => (max === null || a.added > max ? a.added : max), null)
@@ -65,7 +65,7 @@ function OfficialBadge(props: { official: boolean }) {
   return (
     <span
       className="shrink-0 rounded-full border border-line px-1.5 py-px text-9 font-medium tracking-wide text-ink-muted"
-      title={props.official ? tr("Built and maintained by the Chrysalis maintainers") : tr("Made by someone in the community")}
+      title={props.official ? tr("Built and maintained by Molfar Vertep") : tr("Made by someone in the community")}
     >
       {props.official ? tr("Official App") : tr("Community")}
     </span>

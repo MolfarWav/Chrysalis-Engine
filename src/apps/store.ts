@@ -19,9 +19,9 @@ import { isValidGitRef, isValidGitUrl } from "./git.js";
 import { listApps, readApp } from "./manager.js";
 import { readBaseline, readInstallSource, writeBaseline, writeInstallSource } from "./update.js";
 
-/** Repository owners whose apps are official: the Chrysalis maintainers and
- *  Molfar Vertep's own. */
-export const OFFICIAL_SOURCES: readonly string[] = ["https://github.com/ProjectChrysalis/", "https://github.com/MolfarWav/"];
+/** Repository owners whose apps are official: Molfar Vertep's own. Apps from
+ *  anywhere else, upstream Chrysalis included, are reviewed like any other. */
+export const OFFICIAL_SOURCES: readonly string[] = ["https://github.com/MolfarWav/"];
 
 /** Apps Molfar Vertep maintains in its own fork: the upstream repository →
  *  the fork. The Store installs the fork, and an install from the upstream
@@ -103,7 +103,7 @@ export function adoptForkedApps(p: { apps: string; appUpstream: string }): { id:
  *  repository each one lives in now. An install the engine seeded from its
  *  own copy keeps its official status and updates from there. */
 export const FORMERLY_SHIPPED: Readonly<Record<string, string>> = {
-  roleplay: "https://github.com/ProjectChrysalis/Roleplay-Chrysalis",
+  roleplay: "https://github.com/MolfarWav/Molfar.Vertep-Roleplay",
 };
 
 /** Record where formerly shipped apps now come from, so an install an earlier

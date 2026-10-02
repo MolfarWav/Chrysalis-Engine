@@ -250,7 +250,7 @@ body {
       path.join(dir, "README.md"),
       `# ${opts.name}
 
-A Chrysalis app: React + Tailwind. Chrysalis builds it in your browser as you
+A Molfar Vertep app: React + Tailwind. Molfar Vertep builds it in your browser as you
 edit, so there is nothing to install or run locally.
 
 - \`src/\` UI. Entry \`main.tsx\`, page \`app.tsx\`.
@@ -258,7 +258,7 @@ edit, so there is nothing to install or run locally.
 - \`data/\` app-owned data, kept with the workspace.
 - \`manifest.json\` identity. Bump \`version\` when a bundled plugin changes.
 
-Ask the agent in the Chrysalis client to build it out.
+Ask the agent in the Molfar Vertep client to build it out.
 `,
       "utf8",
     );

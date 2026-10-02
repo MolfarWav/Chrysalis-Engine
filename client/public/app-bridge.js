@@ -100,7 +100,7 @@
     try { req = new Request(input, init); } catch (e) { return Promise.reject(e); }
     var url;
     try { url = new URL(req.url, location.href); } catch { return Promise.reject(new TypeError("bad url")); }
-    if (!parentWin) return Promise.reject(new TypeError("this app is not running inside Chrysalis"));
+    if (!parentWin) return Promise.reject(new TypeError("this app is not running inside Molfar Vertep"));
     if (url.origin !== new URL(location.href).origin) {
       return Promise.reject(new TypeError("blocked by the app sandbox: the bridge only reaches this engine"));
     }

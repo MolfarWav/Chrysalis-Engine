@@ -1123,9 +1123,6 @@ type TreeDir = { name: string; path: string; type: "dir"; children: TreeNode[] }
 type TreeFile = { name: string; path: string; type: "file"; size?: number }
 type TreeNode = TreeDir | TreeFile
 
-/** The project's community server, linked from the launcher footer. */
-const COMMUNITY_URL = "https://discord.gg/maFVqyeD4Q"
-
 function LaunchPicker(props: {
   launch: LaunchInfo | null
   onAgent: () => void
@@ -1220,7 +1217,7 @@ function LaunchPicker(props: {
                         <span className="truncate text-14 font-medium text-ink">{a.name || a.id}</span>
                         {a.official ? <span
                             className="shrink-0 rounded-full border border-line px-1.5 py-px text-9 font-medium tracking-wide text-ink-muted"
-                            title={tr("Built and maintained by the Chrysalis maintainers")}
+                            title={tr("Built and maintained by Molfar Vertep")}
                           >
                             {tr("Official App")}
                           </span> : null}
@@ -1263,7 +1260,7 @@ function LaunchPicker(props: {
                 <IconSmall name="store" size="normal" className="text-icon" />
                 <span className="min-w-0 flex-1">
                   <span className="block text-13 font-medium text-ink">{tr("Store")}</span>
-                  <span className="block text-11 leading-4 text-ink-muted">{tr("apps from the Chrysalis team and the community")}</span>
+                  <span className="block text-11 leading-4 text-ink-muted">{tr("apps from Molfar Vertep and the community")}</span>
                 </span>
                 {store.newCount ? <span className="shrink-0 rounded-full bg-accent/20 px-1.5 py-px text-10 font-medium text-ink">
                     {store.newCount === 1 ? tr("1 new") : tr("{n} new", { n: store.newCount })}
@@ -1328,18 +1325,6 @@ function LaunchPicker(props: {
                 </svg>
                 GitHub
               </a> : null}
-            <a
-              href={COMMUNITY_URL}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="flex items-center gap-1 text-ink-muted transition-colors hover:text-ink"
-              title={COMMUNITY_URL}
-            >
-              <svg viewBox="0 0 16 16" className="size-3.5 fill-current" aria-hidden="true">
-                <path d="M13.55 3.02A13.2 13.2 0 0 0 10.3 2a.05.05 0 0 0-.05.02c-.14.25-.3.58-.4.84a12.2 12.2 0 0 0-3.67 0 8.5 8.5 0 0 0-.41-.84.05.05 0 0 0-.05-.02c-1.14.2-2.23.54-3.25 1.02a.05.05 0 0 0-.02.02C.38 6.12-.18 9.13.1 12.1a.06.06 0 0 0 .02.04 13.3 13.3 0 0 0 4 2.02.05.05 0 0 0 .06-.02c.3-.42.58-.87.82-1.33a.05.05 0 0 0-.03-.07 8.7 8.7 0 0 1-1.25-.6.05.05 0 0 1 0-.08l.25-.2a.05.05 0 0 1 .05 0 9.5 9.5 0 0 0 8.06 0 .05.05 0 0 1 .05 0l.25.2a.05.05 0 0 1 0 .08c-.4.23-.82.43-1.25.6a.05.05 0 0 0-.03.07c.24.46.52.9.82 1.33a.05.05 0 0 0 .06.02 13.2 13.2 0 0 0 4-2.02.05.05 0 0 0 .03-.04c.33-3.43-.56-6.4-2.36-9.06a.04.04 0 0 0-.02-.02ZM5.35 10.3c-.79 0-1.44-.72-1.44-1.61 0-.89.64-1.61 1.44-1.61.8 0 1.45.73 1.44 1.61 0 .89-.64 1.61-1.44 1.61Zm5.3 0c-.79 0-1.44-.72-1.44-1.61 0-.89.64-1.61 1.44-1.61.8 0 1.45.73 1.44 1.61 0 .89-.63 1.61-1.44 1.61Z" />
-              </svg>
-              Discord
-            </a>
           </div>
         ) : null}
       {creating ? <NewAppDialog
@@ -1835,7 +1820,7 @@ function ImportAppDialog(props: { from: StoreApp | null; onClose: () => void; on
                   </ul> : <p className="mt-1 text-12 text-ink-muted">{tr("No plugins, plain UI app.")}</p>}
               </div>
               {from?.official ? <p className="rounded-lg border border-line p-3 text-12 leading-4 text-ink-muted">
-                  {tr("An official app, made by the Chrysalis maintainers. Its plugins get the permissions listed above. You can delete it any time.")}
+                  {tr("An official Molfar Vertep app. Its plugins get the permissions listed above. You can delete it any time.")}
                 </p> : preview.kind === "file" ? <p className="rounded-lg border border-warning/30 bg-warning-soft/10 p-3 text-12 leading-4 text-ink-muted">
                   {tr("An app from a file runs real code on your Molfar Vertep server: plugins can read and write the app's data, call models, and reach the hosts listed above. Only import files you made or trust. Your existing apps and data are untouched.")}
                 </p> : <p className="rounded-lg border border-warning/30 bg-warning-soft/10 p-3 text-12 leading-4 text-ink-muted">

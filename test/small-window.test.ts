@@ -101,7 +101,7 @@ describe("what a small model is sent", () => {
     const [s] = await run({ window: 16_000 });
     expect(s!.systemPrompt).toContain("# Workspace (compact mode)");
     expect(s!.systemPrompt).not.toContain("# App/plugin authoring contract");
-    expect(s!.systemPrompt).not.toContain("# Chrysalis workspace"); // AGENTS.md is pointed to, not inlined
+    expect(s!.systemPrompt).not.toContain("# Molfar Vertep workspace"); // AGENTS.md is pointed to, not inlined
     expect(names(s!)).toEqual(expect.arrayContaining(["read_file", "write_file", "edit_file", "grep", "git", "ask_user", "skill_load", "memory_propose", "tools_enable"]));
     expect(names(s!)).not.toContain("app_check");
     expect(names(s!)).not.toContain("skill_propose");
@@ -111,7 +111,7 @@ describe("what a small model is sent", () => {
   it("a large model keeps the full prompt and every tool, and no tools_enable", async () => {
     const [s] = await run({ window: 128_000 });
     expect(s!.systemPrompt).toContain("# App/plugin authoring contract");
-    expect(s!.systemPrompt).toContain("# Chrysalis workspace");
+    expect(s!.systemPrompt).toContain("# Molfar Vertep workspace");
     expect(names(s!)).toContain("app_check");
     expect(names(s!)).not.toContain("tools_enable");
     // no shell on this instance: no bash schema either

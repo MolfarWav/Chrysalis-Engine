@@ -7,6 +7,8 @@ Versions here count from 0.1.0 and are independent of upstream's.
 
 ## Unreleased
 
+- **One-file launcher for Windows**, `Molfar-Vertep.bat` in the repository root, for running from source from any folder: it installs Git and Bun when missing, downloads Molfar Vertep next to itself, offers each new release before installing it (`dev` follows work in progress), builds only what changed, offers a desktop shortcut, and opens Molfar Vertep in your browser. Folder names with spaces or in any language work.
+
 ## 0.3.0 (2026-10-02)
 
 - The interface speaks Ukrainian: Українська in Settings > General > Language, picked automatically for a browser set to Ukrainian. The shell now has 14 languages.

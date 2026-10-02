@@ -15,7 +15,7 @@ holds the rules that do not change between tasks; the handoff holds the task.
 - Clear task: do it. Real ambiguity: 2-8 questions first (AskUserQuestion, options with a short explanation, a recommended default).
 - Verify before claiming anything about code or state; say plainly what is a guess.
 - They test on free OpenRouter models: mostly text-only, small context windows.
-- They run from source on Windows, on two machines, and switch between them: desktop `C:\Users\sulaz\Chrysalis-Engine` (launcher `.fork/start-chrysalis.bat`), laptop `D:\ROLEPlay\Chrysalis-Engine` (launcher `.fork/Chrysalis.bat`, which switches to the newest `claude/*` branch on its own, so pushing your branch is how they get it).
+- They run from source on Windows, on two machines, and switch between them: desktop `C:\Users\sulaz\Chrysalis-Engine`, laptop `D:\ROLEPlay\Chrysalis-Engine`. Both start with `Molfar-Vertep.bat` in the repo root (latest release tag by default; `Molfar-Vertep.bat dev` = the newest `claude/*` branch, so pushing your branch is how they get work in progress). The laptop's old `D:\ROLEPlay\Chrysalis.bat` still follows the newest branch until they switch.
 - The Roleplay app has no checkout of its own: its code is `data/users/molfarwav2/apps/roleplay` inside each machine's engine folder (fork repo MolfarWav/Molfar.Vertep-Roleplay, assembled in a scratch copy). The laptop has no `ask-model` skill and no G: drive; the user copies things over when needed.
 - `data/` is gitignored: code syncs between the machines through GitHub, the workspaces (apps, chats, memory, keys) do not. The repo is public; workspace data never goes into it.
 
@@ -27,7 +27,7 @@ holds the rules that do not change between tasks; the handoff holds the task.
 - `src/server/app.ts`: every HTTP route. `src/agent/`: the built-in agent (`agent.ts` system prompt and runs, `tools.ts`, `memory.ts` memory and skills, `projects.ts`, `checkpoints.ts`, `protect.ts` protected paths, `git-cli.ts`, `context-budget.ts` token estimates). `src/models.ts`: every model call. `src/inspector.ts`: last requests per user. `src/paths.ts`: workspace layout, `AGENT_WRITE_DENYLIST`, workspace AGENTS.md text, `DEFAULT_PERSONA`.
 - `client/`: the shell (Settings etc.), 14 locales. `client-agent/`: the agent page, English only.
 - `builtin-skills/`: skills shipped to the built-in agent (a workspace copy of the same name replaces one).
-- `.fork/`: fork-only notes, handoffs, launchers.
+- `.fork/`: notes, handoffs, release notes. `Molfar-Vertep.bat` (repo root): the launcher for running from source.
 
 ## Rules
 - Never commit `bun.lock` or `client-agent/bun.lock`: `bun install` rewrites them; `git checkout` them back.

@@ -36,8 +36,13 @@ Internal names stay as they were: the command is `chrysalis`, settings are
 `CHRYSALIS_*` variables, and data lives in folders called `Chrysalis`. They are
 the same program as Molfar Vertep, so do not be surprised by them.
 
-A one-file launcher for Windows is coming. Until then, Windows users can use the
-download above or run from source.
+On Windows you can also run from source with one file: put `Molfar-Vertep.bat`
+(in the repository root) in any folder and double-click it. It installs Git and
+Bun if they are missing, downloads Molfar Vertep next to itself, offers each new
+release before installing it, builds what changed, offers a desktop shortcut and
+opens Molfar Vertep in your browser. `Molfar-Vertep.bat dev` follows the newest
+work in progress instead of releases. Folder names with spaces or in any
+language are fine.
 
 On macOS, start with `start.command`, not `chrysalis`. These builds do not carry
 a signature macOS accepts, so opening `chrysalis` directly is blocked or closes

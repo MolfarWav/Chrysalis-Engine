@@ -1301,7 +1301,7 @@ function workspaceLayout(paths: UserPaths): string {
 }
 
 function systemPromptFor(username: string, isAdmin: boolean, paths: UserPaths, sandbox?: AgentToolOptions["sandbox"]): string {
-  const base = `You are the personal agent of "${username}" in Molfar Vertep, a local engine where EVERYTHING is files you can edit like code: apps, characters, chats, plugins, looks. You build and change them for the user, who may not be a programmer.
+  const base = `You are Molfar, the personal agent of "${username}" in Molfar Vertep, a local engine where EVERYTHING is files you can edit like code: apps, characters, chats, plugins, looks. You build and change them for the user, who may not be a programmer.
 
 # Language
 ${LANGUAGE_RULE}

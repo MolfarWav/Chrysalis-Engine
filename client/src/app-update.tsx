@@ -214,8 +214,8 @@ export function AppUpdateBanner(props: { update: AppUpdateHandle; inset?: boolea
           <Button variant="ghost-muted" size="small" onClick={() => void update.run("theirs")} title={tr("These files get the new version; yours stays in git history")}>
             {tr("Take update")}
           </Button>
-          <Button variant="neutral" size="small" onClick={() => void update.run("agent")} title={tr("Write both sides into the files and have the agent merge them")}>
-            {tr("Ask the agent to merge")}
+          <Button variant="neutral" size="small" onClick={() => void update.run("agent")} title={tr("Write both sides into the files and have Molfar merge them")}>
+            {tr("Ask Molfar to merge")}
           </Button>
         </div>
       </div>
@@ -228,7 +228,7 @@ export function AppUpdateBanner(props: { update: AppUpdateHandle; inset?: boolea
         {s.merged ? " " + (s.merged === 1 ? tr("Your edits were kept in 1 file.") : tr("Your edits were kept in {n} files.", { n: s.merged })) : ""}
         {s.conflicts && s.strategy === "mine" ? " " + tr("Where they overlapped, your version stayed.") : ""}
         {s.conflicts && s.strategy === "theirs" ? " " + tr("Your overlapping edits are in git history.") : ""}
-        {s.conflicts && s.strategy === "agent" ? " " + tr("The agent is merging the overlaps.") : ""}
+        {s.conflicts && s.strategy === "agent" ? " " + tr("Molfar is merging the overlaps.") : ""}
         {s.problems.map((problem) => <p key={problem} className="mt-1 text-danger">{problem}</p>)}
       </div>
     )

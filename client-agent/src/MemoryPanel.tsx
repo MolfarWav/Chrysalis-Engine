@@ -350,7 +350,7 @@ function SkillForm({ initial, scopes, onSaved, onCancel }: {
             {description.length}/{DESCRIPTION_MAX}
           </span>
         </span>
-        <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="One line: when the agent should use this skill" disabled={busy} />
+        <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="One line: when Molfar should use this skill" disabled={busy} />
       </label>
       <label className="grid gap-1 text-sm">
         Body
@@ -430,7 +430,7 @@ function SkillView({ skill, scopes, onBack, onChanged, onImprove, onError }: {
               <PencilSimple /> {pureBuiltin ? "Customize" : "Edit"}
             </Button>
             <Button variant="outline" size="sm" onClick={() => onImprove(skill)}>
-              <Sparkle /> Improve with the agent
+              <Sparkle /> Improve with Molfar
             </Button>
             {pureBuiltin ? null : overrides ? (
               <Button

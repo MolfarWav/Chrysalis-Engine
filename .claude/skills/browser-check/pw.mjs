@@ -44,7 +44,7 @@ export async function open({ path = "/agent/", width = 1280, height = 800, theme
 
 /** Type a message on the agent page and wait until the run settles. */
 export async function send(page, text, { timeout = 30000 } = {}) {
-  const box = page.getByPlaceholder("Send a message...")
+  const box = page.getByPlaceholder("Ask Molfar")
   await box.waitFor({ timeout })
   await box.fill(text)
   await box.press("Enter")

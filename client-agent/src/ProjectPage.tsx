@@ -500,7 +500,7 @@ function Checkpoints({ detail }: { detail: ProjectDetail }): ReactNode {
           ))}
         </ul>
       ) : (
-        <p className="text-muted-foreground text-sm">No checkpoints yet. The agent takes one before it changes the app, or save one yourself.</p>
+        <p className="text-muted-foreground text-sm">No checkpoints yet. Molfar takes one before it changes the app, or save one yourself.</p>
       )}
       {list && list.length > CHECKPOINTS_SHOWN ? (
         <button type="button" className="text-muted-foreground hover:text-foreground mt-2 text-xs underline underline-offset-2" onClick={() => setAll((v) => !v)}>

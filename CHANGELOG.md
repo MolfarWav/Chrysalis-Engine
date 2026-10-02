@@ -7,6 +7,12 @@ Versions here count from 0.1.0 and are independent of upstream's.
 
 ## Unreleased
 
+## 0.4.0 (2026-10-02)
+
+- **The agent is Molfar now**: an old Carpathian molfar, kind and wise, who also knows today's code. He has a name and a face across the interface (Мольфар in Ukrainian and Russian), a light touch of character in conversation (a warm word, now and then a proverb from the mountains), and none of it in code, files or commit messages. The character lives in the default instructions, so you can soften or remove it in Settings; if you never edited them, you get it on the next start.
+- **Reports are easier to scan**: Molfar opens each block with a marker (🔍 finding · 🔧 action · ✅ done · ⚠️ risk · ❓ question · 💡 idea · 🧹 cleanup · 📦 side note), and long reports get headings with the marker on both sides.
+- Fixed: plugins were found in a different order on Windows and Linux, so which plugin answered a route first could differ between machines (and CI failed since 0.3.0). The order is the same everywhere now.
+
 ## 0.3.1 (2026-10-02)
 
 - **One-file launcher for Windows**, `Molfar-Vertep.bat` in the repository root, for running from source from any folder: it installs Git and Bun when missing, downloads Molfar Vertep next to itself, offers each new release before installing it (`dev` follows work in progress), builds only what changed, offers a desktop shortcut, and opens Molfar Vertep in your browser. Folder names with spaces or in any language work.

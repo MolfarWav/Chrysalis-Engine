@@ -45,6 +45,7 @@ import { ArrowDown, ArrowUp, Check, CaretLeft, CaretRight, Copy, DownloadSimple,
 import { useEnterSends } from "@/hooks/use-touch-ui";
 import { currentProjectId, effectiveModel, useAgent as useAgentStore } from "@/store";
 import { RunCheckpoints } from "@/Checkpoints";
+import { MolfarAvatar } from "@/MolfarAvatar";
 import { ComposerProjectRow, ProjectAttachButton, ProjectContextLine, SaveToProjectAction } from "@/ProjectChat";
 import {
   createContext,
@@ -251,6 +252,7 @@ const ThreadScrollToBottom: FC = () => {
 const ThreadWelcome: FC = () => {
   return (
     <div className="aui-thread-welcome-root mb-6 flex flex-col items-center px-4 text-center">
+      <MolfarAvatar size={88} className="fade-in animate-in fill-mode-both mb-4 duration-200" />
       <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-2xl font-medium tracking-tight duration-200">
         How can I help you today?
       </h1>
@@ -437,7 +439,7 @@ const Composer: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
           >
             <ComposerProjectRow />
             <ComposerPrimitive.Input
-              placeholder="Send a message..."
+              placeholder="Ask Molfar…"
               className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base leading-6 outline-none"
               rows={1}
               autoFocus={autoFocus}
@@ -557,9 +559,12 @@ const AssistantMessage: FC = () => {
       data-role="assistant"
       className="fade-in slide-in-from-bottom-1 animate-in relative -mb-7.5 pb-7.5 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
     >
+      <div className="flex items-start gap-2.5 ps-2">
+      <MolfarAvatar size={28} className="mt-0.5" />
+      <div className="min-w-0 flex-1">
       <div
         data-slot="aui_assistant-message-content"
-        className="text-foreground px-2 leading-relaxed wrap-break-word"
+        className="text-foreground pe-2 leading-relaxed wrap-break-word"
       >
         {/* reasoning and tool calls between two pieces of the answer are one
             step list, interleaved in the order the model produced them */}
@@ -606,7 +611,7 @@ const AssistantMessage: FC = () => {
                   <span
                     data-slot="aui_assistant-message-indicator"
                     className="animate-pulse font-sans"
-                    aria-label="Assistant is working"
+                    aria-label="Molfar is working"
                   >
                     {"●"}
                   </span>
@@ -618,14 +623,18 @@ const AssistantMessage: FC = () => {
         </MessagePrimitive.GroupedParts>
         <MessageError />
       </div>
-      <RunCheckpoints />
+      <div className="-ms-2">
+        <RunCheckpoints />
+      </div>
 
       <div
         data-slot="aui_assistant-message-footer"
-        className={cn("ms-2 flex items-center", ACTION_BAR_HEIGHT)}
+        className={cn("flex items-center", ACTION_BAR_HEIGHT)}
       >
         <BranchPicker />
         <AssistantActionBar />
+      </div>
+      </div>
       </div>
     </MessagePrimitive.Root>
   );

@@ -20,7 +20,7 @@ import { tr, useLocale } from "./i18n/index"
 
 type Tab = { id: string; kind: "agent" | "app" | "new"; name: string }
 const AGENT_TAB_ID = "__agent"
-const agentTab = (): Tab => ({ id: AGENT_TAB_ID, kind: "agent", name: tr("Agent") })
+const agentTab = (): Tab => ({ id: AGENT_TAB_ID, kind: "agent", name: tr("Molfar") })
 /** A New tab is a REAL tab: it has its own id, survives a refresh, and closes
  * only when the user closes it. Picking a destination in one turns THAT tab
  * into the destination, in place. */
@@ -65,6 +65,22 @@ function Logo(props: { size?: number }) {
       height={props.size ?? 20}
       className="rounded-[4px]"
       style={{ width: `${props.size ?? 20}px`, height: `${props.size ?? 20}px` }}
+    />
+  )
+}
+
+/** Molfar's face: the built-in agent's avatar, round. The 128 px file serves
+ *  the small sizes; it is a static file of the shell, the agent page loads the
+ *  same one. */
+function MolfarAvatar(props: { size: number }) {
+  return (
+    <img
+      src="/client/molfar-128.webp"
+      alt="Molfar"
+      width={props.size}
+      height={props.size}
+      className="shrink-0 rounded-full object-cover ring-1 ring-line"
+      style={{ width: `${props.size}px`, height: `${props.size}px` }}
     />
   )
 }
@@ -402,6 +418,7 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
                       }}
                       title={t.name}
                     >
+                      {t.kind === "agent" ? <MolfarAvatar size={16} /> : null}
                       <span className="truncate">{t.name}</span>
                       <span
                         role="button"
@@ -484,7 +501,7 @@ function Shell(props: { theme: "light" | "dark"; onTheme: () => void }) {
               <iframe
                 ref={bindAgentFrame}
                 src="/agent"
-                title={tr("Agent")}
+                title={tr("Molfar")}
                 className="h-full w-full border-0"
               />
             </div>
@@ -780,7 +797,7 @@ function AppCanvas(props: { username: string; tab: Tab; trusted?: boolean; onAsk
         <div className="ml-auto flex items-center gap-0.5">
           <button
             className={"flex items-center gap-1 rounded-md px-2 py-1 text-12 transition-colors hover:bg-hover hover:text-ink " + (props.split ? "text-ink" : "text-ink-muted")}
-            title={props.split ? tr("Unsplit, back to full width") : tr("Split right: agent left, this app live on the right")}
+            title={props.split ? tr("Unsplit, back to full width") : tr("Split right: Molfar left, this app live on the right")}
             onClick={props.onSplit}
           >
             <IconSmall name="split" size="small" />
@@ -820,7 +837,7 @@ function AppCanvas(props: { username: string; tab: Tab; trusted?: boolean; onAsk
             className="shrink-0 rounded-md px-2 py-0.5 text-12 text-ink-muted transition-colors hover:bg-hover hover:text-ink"
             onClick={() => props.onAskAgent(agentErrorPrompt(props.tab.name, props.tab.id, runtimeError))}
           >
-            {tr("Ask the agent")}
+            {tr("Ask Molfar")}
           </button>
         </div>
       ) : null}
@@ -863,7 +880,7 @@ function BuildErrors(props: { status: AppBuildStatus; onClose: () => void; onAsk
       <div className="mb-1 flex items-center gap-2 font-sans text-12 text-ink-muted">
         <span>{tr("Build failed. The app shows its last good build")}</span>
         <button className="ml-auto rounded px-1.5 py-0.5 hover:bg-hover hover:text-ink" onClick={() => props.onAskAgent(lines.join("\n\n"))}>
-          {tr("Ask the agent")}
+          {tr("Ask Molfar")}
         </button>
         <button className="rounded px-1.5 py-0.5 hover:bg-hover hover:text-ink" onClick={props.onClose}>
           {tr("Dismiss")}
@@ -1188,10 +1205,10 @@ function LaunchPicker(props: {
               className="flex items-center gap-3 rounded-lg border border-line px-4 py-3 text-left transition-colors hover:bg-hover"
               onClick={props.onAgent}
             >
-              <IconSmall name="outline-square-arrow" size="normal" className="text-icon" />
+              <MolfarAvatar size={32} />
               <span className="flex-1">
-                <span className="block text-14 font-medium text-ink">{tr("Agent")}</span>
-                <span className="block text-12 text-ink-muted">{tr("builds, edits and manages your apps")}</span>
+                <span className="block text-14 font-medium text-ink">{tr("Molfar")}</span>
+                <span className="block text-12 text-ink-muted">{tr("your agent: builds, edits and manages your apps")}</span>
               </span>
             </button>
 
@@ -1273,7 +1290,7 @@ function LaunchPicker(props: {
               >
                 <IconSmall name="workspace-new" size="normal" className="text-icon" />
                 <span className="text-13 font-medium text-ink">{tr("New app")}</span>
-                <span className="text-11 leading-4 text-ink-muted">{tr("a starter the agent builds out with you")}</span>
+                <span className="text-11 leading-4 text-ink-muted">{tr("a starter Molfar builds out with you")}</span>
               </button>
               <button
                 className="flex flex-col gap-1.5 rounded-lg border border-dashed border-line px-3 py-3 text-left transition-colors hover:bg-hover"
@@ -1591,7 +1608,7 @@ function NewAppDialog(props: { slugOf: (name: string) => string; onClose: () => 
           </div></>: <>
               <h3 className="text-14 font-medium text-ink">{tr("“{name}” created", { name })}</h3>
               <p className="text-13 leading-5 text-ink-muted">
-                {tr("A starter page is in place. Open the {agent} tab and tell it what to build.", { agent: tr("Agent") })}
+                {tr("A starter page is in place. Open the {agent} tab and tell it what to build.", { agent: tr("Molfar") })}
               </p>
               <div className="flex justify-end gap-2">
                 <Button variant="ghost-muted" size="small" onClick={props.onClose}>{tr("Later")}</Button>

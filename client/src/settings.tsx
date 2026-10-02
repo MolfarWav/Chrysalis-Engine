@@ -91,7 +91,7 @@ export function SettingsBody(props: { onClose: () => void; me: Me; initialTab?: 
     { value: "api", label: tr("API connections"), icon: <Icon name="cloud-upload" /> },
     { value: "models", label: tr("Models"), icon: <Icon name="providers" /> },
     { value: "speech", label: tr("Speech"), icon: <Icon name="speaker" /> },
-    { value: "agent", label: tr("Agent"), icon: <Icon name="brain" /> },
+    { value: "agent", label: tr("Molfar"), icon: <Icon name="brain" /> },
     { value: "mcp", label: tr("MCP servers"), icon: <Icon name="terminal-active" /> },
     { value: "developer", label: tr("Developer"), icon: <Icon name="code" /> },
     ...(props.me.role === "admin"
@@ -615,7 +615,7 @@ function ProfileImportSection() {
         [tr("Exported"), summary.exportedAt ? dateLabel(summary.exportedAt) : "?"],
         [tr("Apps"), summary.apps.length ? summary.apps.join(", ") : tr("No apps")],
         [tr("Projects"), String(summary.projects)],
-        [tr("Agent chats"), String(summary.agentChats)],
+        [tr("Molfar's chats"), String(summary.agentChats)],
         [tr("Files"), `${summary.files} · ${humanSize(summary.bytes)}`],
       ]
     : []
@@ -740,16 +740,16 @@ function AgentTab() {
   }
 
   return (
-    <Pane title={tr("Agent")} description={tr("How your agent behaves and manages context across every app.")}>
+    <Pane title={tr("Molfar")} description={tr("How Molfar behaves and manages context across every app.")}>
       <div className="flex flex-col gap-6 pb-4">
         <InternetSection />
         <AutoCompactSection />
         <SmallModelSection />
         <div className="flex flex-col gap-2">
-          <h3 className="text-13 font-medium text-ink">{tr("Agent instructions")}</h3>
+          <h3 className="text-13 font-medium text-ink">{tr("Molfar's instructions")}</h3>
           <p className="text-12 text-ink-muted">
-            {tr("Your standing preferences for the agent. The engine's own rules (language, safety, verification) always apply.")}{" "}
-            {tr("Appended to your agent's system prompt (saved to persona.md). Your agent can change it only after you allow it.")}
+            {tr("Your standing preferences for Molfar. The engine's own rules (language, safety, verification) always apply.")}{" "}
+            {tr("Appended to Molfar's system prompt (saved to persona.md). Molfar can change it only after you allow it.")}
           </p>
           <textarea
             className="min-h-[160px] w-full resize-y rounded-lg border border-line bg-panel px-3 py-2 text-13 leading-5 text-ink outline-none placeholder:text-ink-faint focus:border-line-focus"
@@ -939,7 +939,7 @@ function ProtectedFilesSection() {
     <div className="flex flex-col gap-2">
       <h3 className="text-13 font-medium text-ink">{tr("Protected files")}</h3>
       <p className="text-12 leading-4 text-ink-muted">
-        {tr("Your agent changes these only after you allow it in the chat, once per request. Patterns: * is one folder level, ** any depth.")}
+        {tr("Molfar changes these only after you allow it in the chat, once per request. Patterns: * is one folder level, ** any depth.")}
       </p>
       <textarea
         className="min-h-[96px] w-full resize-y rounded-lg border border-line bg-panel px-3 py-2 font-mono text-12 leading-5 text-ink outline-none placeholder:text-ink-faint focus:border-line-focus"
@@ -1001,10 +1001,10 @@ function InternetSection() {
           disabled={setting.loading || busy}
           onChange={(e) => void toggle(e.currentTarget.checked)}
         />
-        {tr("Agent internet access")}
+        {tr("Molfar's internet access")}
       </label>
       <p className="text-12 leading-4 text-ink-muted">
-        {tr("Give the agent internet access in its sandbox, for curl, wget and pip. Your own computer and local network stay blocked.")}
+        {tr("Give Molfar internet access in its sandbox, for curl, wget and pip. Your own computer and local network stay blocked.")}
       </p>
       {err ? <div className="text-12 text-danger">{err}</div> : null}
     </div>
@@ -1349,7 +1349,7 @@ function ModelsTab() {
   const shownCount = models.filter(chosen).length
 
   return (
-    <Pane title={tr("Models")} description={tr("Choose which models appear in the model pickers, in the agent and in every app.")}>
+    <Pane title={tr("Models")} description={tr("Choose which models appear in the model pickers, in Molfar and in every app.")}>
       <div className="flex flex-col gap-3 pb-4">
         <div className="flex items-center gap-2">
           <input className={inputClass} placeholder={tr("Search models…")} value={query} onChange={(e) => setQuery(e.currentTarget.value)} />
@@ -2172,7 +2172,7 @@ function ExaKeySection(props: { onSaved: () => void }) {
     try {
       await api("POST", "/v1/mcp/exa-key", { key: key.trim() })
       setState("done")
-      setMsg(tr("Web search enabled, the agent can search now."))
+      setMsg(tr("Web search enabled, Molfar can search now."))
       setKey("")
       props.onSaved()
     } catch (e) {
@@ -2184,7 +2184,7 @@ function ExaKeySection(props: { onSaved: () => void }) {
     <section className="flex flex-col gap-2 rounded-lg border border-line p-3">
       <h3 className="text-13 font-medium text-ink">{tr("Web search")}</h3>
       <p className="text-12 text-ink-muted">
-        {tr("Give the agent web search (Exa). Paste an API key (free at exa.ai) and the built-in web-search server comes online. The key is stored with your credentials, never in your files.")}
+        {tr("Give Molfar web search (Exa). Paste an API key (free at exa.ai) and the built-in web-search server comes online. The key is stored with your credentials, never in your files.")}
       </p>
       <div className="flex gap-2">
         <input
@@ -2209,7 +2209,7 @@ function ExaKeySection(props: { onSaved: () => void }) {
 
 type McpAccess = "all" | "agent" | "off"
 const MCP_ACCESS: McpAccess[] = ["all", "agent", "off"]
-const mcpAccessLabel = (a: McpAccess) => (a === "all" ? tr("All apps") : a === "agent" ? tr("Agent only") : tr("Off"))
+const mcpAccessLabel = (a: McpAccess) => (a === "all" ? tr("All apps") : a === "agent" ? tr("Molfar only") : tr("Off"))
 
 function McpTab() {
   const servers = useResource(() => mcpApi.list())
@@ -2272,7 +2272,7 @@ function McpTab() {
   }
 
   return (
-    <Pane title={tr("MCP servers")} description={tr("Tool servers your agent and apps can call. Apps start with each one off and switch on what they need.")}>
+    <Pane title={tr("MCP servers")} description={tr("Tool servers Molfar and your apps can call. Apps start with each one off and switch on what they need.")}>
       <div className="flex flex-col gap-4 pb-4">
         <ExaKeySection onSaved={() => servers.refetch()} />
         <section className="flex flex-col gap-2">

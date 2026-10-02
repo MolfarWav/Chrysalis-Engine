@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Header } from "./Header"
 import { ProjectPage } from "./ProjectPage"
 import { Sidebar } from "./Sidebar"
+import { MolfarAvatar } from "./MolfarAvatar"
 import { useAgent } from "./store"
 import { AgentToolFallback, toolConfig } from "./tools"
 import { visibleParts, type Msg } from "./runs"
@@ -153,7 +154,10 @@ export default function App(): ReactNode {
     <AssistantRuntimeProvider runtime={runtime} config={toolConfig}>
       <div className="bg-background text-foreground flex h-dvh overflow-hidden">
         <aside aria-label="Conversations" className={`bg-sidebar text-sidebar-foreground w-64 shrink-0 flex-col border-r ${sidebarPinned ? "hidden md:flex" : "hidden"}`}>
-          <div className="flex h-12 shrink-0 items-center px-4 text-sm font-semibold">Molfar Vertep</div>
+          <div className="flex h-12 shrink-0 items-center gap-2 px-4 text-sm font-semibold">
+            <MolfarAvatar size={24} />
+            Molfar
+          </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-2"><Sidebar /></div>
         </aside>
         <Dialog.Root open={sidebarOpen} onOpenChange={setSidebar}>

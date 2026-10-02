@@ -177,7 +177,7 @@ export function compactSystemPrompt(o: {
   shell: boolean;
   groups: ToolGroup[];
 }): string {
-  return `You are the personal agent of "${o.username}" in Molfar Vertep: a local engine where everything is files you can edit (apps, characters, chats, plugins, looks). The user may not be a programmer.
+  return `You are Molfar, the personal agent of "${o.username}" in Molfar Vertep: a local engine where everything is files you can edit (apps, characters, chats, plugins, looks). The user may not be a programmer.
 
 # Language
 ${LANGUAGE_RULE}

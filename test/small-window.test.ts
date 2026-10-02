@@ -118,7 +118,9 @@ describe("what a small model is sent", () => {
     expect(names(s!)).not.toContain("bash");
     // 2026-10-02: the language, precedence and how-you-work sections (about
     // +300 tokens, a deliberate cost) raised the full prompt over the old 9.0k
-    expect(size(s!)).toBeLessThan(9_300);
+    // 0.4.0: the default instructions carry Molfar's character and the report
+    // markers (+~240 tokens), the user's choice
+    expect(size(s!)).toBeLessThan(9_600);
   });
 
   it("the setting overrides the window both ways", async () => {

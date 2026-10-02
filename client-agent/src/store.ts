@@ -377,7 +377,7 @@ export const useAgent = create<AgentState>()((set, get) => {
       try {
         const r = await projectsApi.restoreCheckpoint(`app:${app}`, id)
         const files = r.changed.length === 1 ? "1 file" : `${r.changed.length} files`
-        const deps = r.depsChanged ? ". Reinstall dependencies: ask the agent to run app_deps" : ""
+        const deps = r.depsChanged ? ". Reinstall dependencies: ask Molfar to run app_deps" : ""
         set((st) => ({
           checkpointsRev: st.checkpointsRev + 1,
           undone: markUndone ? { ...st.undone, [markUndone]: true } : st.undone,

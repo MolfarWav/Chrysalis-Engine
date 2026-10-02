@@ -375,7 +375,7 @@ export function ServerTab() {
           <TextSetting label={tr("Key")} value={f.ssl.keyPath} locked={locked["ssl.keyPath"]} disabled={busy} onSave={(v) => void save({ "ssl.keyPath": v })} />
         </Section>
 
-        <Section title={tr("Apps and agent")}>
+        <Section title={tr("Apps and Molfar")}>
           <Toggle
             label={tr("Apps can download packages")}
             hint={tr("Install scripts never run.")}
@@ -385,7 +385,7 @@ export function ServerTab() {
             onChange={(v) => void save({ "apps.packageDownloads": v })}
           />
           <Toggle
-            label={tr("Agent shell")}
+            label={tr("Molfar's shell")}
             hint={tr("Runs inside your browser tab, never on this computer.")}
             checked={e.agent.shell}
             locked={locked["agent.shell"]}

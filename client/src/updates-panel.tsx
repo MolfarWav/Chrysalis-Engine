@@ -259,7 +259,7 @@ export function UpdatesDialog(props: {
             </div> : null}
         </div>
         <p className="text-11 leading-4 text-ink-faint">
-          {tr("Agent instructions and built-in skills come with Molfar Vertep and update together with it.")}
+          {tr("Molfar's instructions and built-in skills come with Molfar Vertep and update together with it.")}
         </p>
       </div>
     </div>

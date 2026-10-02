@@ -292,18 +292,20 @@ function Shell(props: { theme: ThemeControl }) {
   // frame may not exist yet when the agent tab was closed
   const agentFrame = useRef<HTMLIFrameElement | null>(null)
   const agentReady = useRef(false)
-  const pendingAgentPrompt = useRef<string | null>(null)
+  /** "start" sends the text at once (the shell's own prompts); "draft" only
+   *  puts it in a new chat's composer (text an app proposed) */
+  const pendingAgentPrompt = useRef<{ kind: "start" | "draft"; text: string } | null>(null)
   const bindAgentFrame = useCallback((el: HTMLIFrameElement | null) => {
     agentFrame.current = el
     // a remounted frame announces itself again
     if (!el) agentReady.current = false
   }, [])
   const deliverAgentPrompt = () => {
-    const text = pendingAgentPrompt.current
+    const pending = pendingAgentPrompt.current
     const target = agentFrame.current?.contentWindow
-    if (!text || !target || !agentReady.current) return
+    if (!pending || !target || !agentReady.current) return
     pendingAgentPrompt.current = null
-    target.postMessage({ __chrysalisAgent: "start", text }, location.origin)
+    target.postMessage({ __chrysalisAgent: pending.kind, text: pending.text }, location.origin)
   }
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
@@ -316,11 +318,40 @@ function Shell(props: { theme: ThemeControl }) {
     return () => window.removeEventListener("message", onMessage)
   }, [])
   /** Open the agent on a fresh chat that starts with `prompt`. */
-  function askAgent(prompt: string) {
-    pendingAgentPrompt.current = prompt
+  function askAgent(prompt: string, kind: "start" | "draft" = "start") {
+    pendingAgentPrompt.current = { kind, text: prompt }
     openAgent()
     deliverAgentPrompt()
   }
+  // Apps ask the shell for a few things over the bridge (the allowlist is
+  // shellRequest in app-bridge-host.js: trusted apps only). Heard only from
+  // the app on screen, and Molfar gets an unsent draft, never a sent message.
+  const shellNow = useRef({ active, pinned, launch, openApp, askAgent })
+  shellNow.current = { active, pinned, launch, openApp, askAgent }
+  const lastShellDraft = useRef(0)
+  useEffect(() => {
+    const host = window.ChrysalisBridgeHost
+    if (!host) return
+    host.onShellRequest = (appId, req) => {
+      const now = shellNow.current
+      const onScreen = document.visibilityState === "visible" && (now.active?.id === appId || now.pinned?.id === appId)
+      if (!onScreen) throw new Error("only the app on screen may do this")
+      const apps = now.launch?.apps ?? []
+      if (req.op === "apps") return apps.map((a) => ({ id: a.id, name: a.name || a.id }))
+      if (req.op === "open-app") {
+        if (!apps.some((a) => a.id === req.appId)) throw new Error("no such app")
+        now.openApp(req.appId)
+        return null
+      }
+      if (Date.now() - lastShellDraft.current < 2000) throw new Error("too many requests")
+      lastShellDraft.current = Date.now()
+      now.askAgent(req.text, "draft")
+      return null
+    }
+    return () => {
+      host.onShellRequest = undefined
+    }
+  }, [])
   /** Manifest name when known (launch list), else the id. Callers inside
    *  enter() pass the freshly fetched list — the `launch` state is still null
    *  in that closure, so trusting it named restored tabs by raw id. */

@@ -82,15 +82,34 @@
       for (var i = 0; i < q.length; i++) q[i]();
       return;
     }
-    if (d.type === "fetch-result" || d.type === "fetch-error") {
+    if (d.type === "fetch-result" || d.type === "fetch-error" || d.type === "shell-result" || d.type === "shell-error") {
       var p = pending[d.id];
       if (!p) return;
       delete pending[d.id];
-      if (d.type === "fetch-error") p.reject(new Error(d.error || "bridge fetch failed"));
-      else p.resolve(d);
+      if (d.type === "fetch-error" || d.type === "shell-error") p.reject(new Error(d.error || "bridge request failed"));
+      else p.resolve(d.type === "shell-result" ? d.data : d);
       return;
     }
     if (d.type === "ws-event") deliverWs(d);
+  });
+
+  // ---------- shell ----------
+  // A few shell actions for apps the engine trusts (official apps). The shell
+  // honours them only while the app's tab is the one on screen, and Molfar
+  // only gets a DRAFT: the user reads it and decides whether to send it.
+  function shellCall(op, payload) {
+    if (!parentWin) return Promise.reject(new Error("this app is not running inside Molfar Vertep"));
+    var msg = { type: "shell", op: op };
+    for (var k in payload) msg[k] = payload[k];
+    return call(msg);
+  }
+  window.chrysalisShell = Object.freeze({
+    /** Open Molfar on a new chat with `text` in the composer, unsent. */
+    askMolfar: function (text) { return shellCall("ask-molfar", { text: String(text) }); },
+    /** The user's installed apps: [{ id, name }]. */
+    apps: function () { return shellCall("apps", {}); },
+    /** Switch the shell to another installed app's tab. */
+    openApp: function (id) { return shellCall("open-app", { appId: String(id) }); },
   });
 
   // ---------- fetch ----------

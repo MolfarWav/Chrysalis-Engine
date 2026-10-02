@@ -67,8 +67,11 @@ createRoot(document.getElementById("root")!).render(
 window.addEventListener("message", (e) => {
   if (e.origin !== location.origin || e.source !== window.parent) return
   const d = e.data as { __chrysalisAgent?: unknown; text?: unknown } | null
-  if (d?.__chrysalisAgent !== "start" || typeof d.text !== "string" || !d.text.trim()) return
+  if (typeof d?.text !== "string" || !d.text.trim()) return
   const agent = useAgent.getState()
+  // "draft": text an app proposed, left in a new chat's composer for the user
+  if (d.__chrysalisAgent === "draft") return agent.newChatWith(d.text)
+  if (d.__chrysalisAgent !== "start") return
   agent.newChat()
   void agent.send(d.text)
 })

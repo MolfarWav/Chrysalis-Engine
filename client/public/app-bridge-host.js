@@ -174,6 +174,36 @@
     });
   }
 
+  /** Shell actions an app may ask for (`window.chrysalisShell` in the frame).
+   *  Trusted apps only; returns the cleaned request or null. The shell's
+   *  handler (CH.onShellRequest) adds the rest: the app's tab must be the one
+   *  on screen, and Molfar only gets an unsent draft. */
+  var SHELL_TEXT_MAX = 4000;
+  var SHELL_APP_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
+  function shellRequest(trusted, d) {
+    if (trusted !== true || !d || typeof d.op !== "string") return null;
+    if (d.op === "ask-molfar") {
+      return typeof d.text === "string" && d.text.trim() && d.text.length <= SHELL_TEXT_MAX ? { op: "ask-molfar", text: d.text } : null;
+    }
+    if (d.op === "apps") return { op: "apps" };
+    if (d.op === "open-app") return typeof d.appId === "string" && SHELL_APP_ID.test(d.appId) ? { op: "open-app", appId: d.appId } : null;
+    return null;
+  }
+
+  function handleShell(record, source, d) {
+    function reply(ok, data) {
+      send(source, ok ? { __chrysalis: 1, type: "shell-result", id: d.id, data: data === undefined ? null : data }
+        : { __chrysalis: 1, type: "shell-error", id: d.id, error: String(data) });
+    }
+    var req = shellRequest(record.trusted, d);
+    if (!req) return reply(false, "not allowed for this app");
+    var handler = CH.onShellRequest;
+    if (typeof handler !== "function") return reply(false, "the shell does not offer this");
+    Promise.resolve()
+      .then(function () { return handler(record.appId, req); })
+      .then(function (data) { reply(true, data); }, function (e) { reply(false, (e && e.message) || "refused"); });
+  }
+
   function wsAllowed(path) {
     return path === "/v1/ws" || path.indexOf("/v1/ws?") === 0;
   }
@@ -268,6 +298,7 @@
     }
     if (d.nonce !== record.nonce) return;
     if (d.type === "fetch") handleFetch(record, e.source, d);
+    else if (d.type === "shell") handleShell(record, e.source, d);
     else if (d.type === "ws-open") handleWsOpen(record, e.source, d);
     else if (d.type === "ws-send") {
       var ws = wsClients.get(wsKey(record.appId, d.wsId));
@@ -297,5 +328,6 @@
 
   CH.allowedRequest = allowedRequest;
   CH.eventAllowed = eventAllowed;
+  CH.shellRequest = shellRequest;
   CH.storageKey = storageKey;
 })();

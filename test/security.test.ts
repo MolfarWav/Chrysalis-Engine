@@ -930,6 +930,29 @@ describe("A2 the bridge's second lock (server side)", () => {
     }
   });
 
+  it("only trusted apps get shell actions, and only well-formed ones", async () => {
+    const vm = await import("node:vm");
+    const source = fs.readFileSync(path.resolve(process.cwd(), "client/public/app-bridge-host.js"), "utf8");
+    const win: Record<string, unknown> = { addEventListener: () => undefined };
+    vm.runInContext(source, vm.createContext({
+      window: win, document: {}, localStorage: { getItem: () => null, setItem: () => undefined },
+      crypto: { getRandomValues: (b: Uint8Array) => b }, location: { origin: "http://localhost:8788" },
+      WebSocket: class {}, TextEncoder, TextDecoder, btoa, atob, Map, Set, URL, Uint8Array,
+    }));
+    const shellRequest = (win.ChrysalisBridgeHost as { shellRequest: (t: boolean, d: unknown) => unknown }).shellRequest;
+    expect(shellRequest(true, { op: "ask-molfar", text: "make a card", extra: "x" })).toEqual({ op: "ask-molfar", text: "make a card" });
+    expect(shellRequest(true, { op: "apps" })).toEqual({ op: "apps" });
+    expect(shellRequest(true, { op: "open-app", appId: "notes" })).toEqual({ op: "open-app", appId: "notes" });
+    for (const d of [
+      { op: "ask-molfar", text: "hi" },
+      { op: "apps" },
+    ]) expect(shellRequest(false, d), "untrusted").toBeNull();
+    for (const d of [
+      { op: "ask-molfar", text: "   " }, { op: "ask-molfar", text: "x".repeat(4001) }, { op: "ask-molfar", text: 5 },
+      { op: "open-app", appId: "../x" }, { op: "open-app" }, { op: "send-molfar", text: "hi" }, null, "apps",
+    ]) expect(shellRequest(true, d), JSON.stringify(d)).toBeNull();
+  });
+
   it("an app sees only the assets it stored (an official app also sees older unowned ones)", async () => {
     const { app, token, p } = await auditApp(dir);
     const { writeInstallSource } = await import("../src/apps/update.js");

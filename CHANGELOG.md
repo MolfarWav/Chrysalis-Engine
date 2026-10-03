@@ -7,6 +7,8 @@ Versions here count from 0.1.0 and are independent of upstream's.
 
 ## Unreleased
 
+- **Apps install the packages they are missing**: when an app update adds a package and its install fails (offline, a Bun error), the app no longer stays broken with `Could not resolve` in the build. Opening the app installs what `package.json` lists but `node_modules` lacks (at most once every 10 minutes per app), and every start does the same, not only for apps with no `node_modules` at all.
+
 ## 0.6.0 (2026-10-02)
 
 - **Apps can reach Molfar**: an official app may open Molfar on a new chat with a request typed in but unsent (`window.chrysalisShell.askMolfar`), list the installed apps (`apps()`) and switch to one (`openApp(id)`). Only trusted apps get it, only while their tab is on screen, at most one draft every 2 seconds, 4000 characters at most; an app can never send a message for you.

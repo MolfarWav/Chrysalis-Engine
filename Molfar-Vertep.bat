@@ -251,7 +251,9 @@ rem ships its own: git refuses to overwrite an untracked file
 git ls-files --error-unmatch Molfar-Vertep.bat >nul 2>nul
 if errorlevel 1 git cat-file -e "%MV_TARGET%:Molfar-Vertep.bat" 2>nul && del /q "Molfar-Vertep.bat" 2>nul
 if defined MV_DEV (
-  git checkout -B "%MV_BRANCH%" "origin/%MV_BRANCH%"
+  rem a branch held by a git worktree, a Claude Code session on this
+  rem computer, cannot be checked out twice: take its commit instead
+  git checkout -B "%MV_BRANCH%" "origin/%MV_BRANCH%" 2>nul || git checkout --quiet --detach "%MV_TARGET%"
 ) else (
   git checkout --quiet --detach "%MV_TARGET%"
 )

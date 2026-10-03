@@ -414,6 +414,24 @@ afterEach(() => {
     expect(await status()).toBe(false);
   });
 
+  it("missingPackages names listed packages node_modules lacks (scoped too)", async () => {
+    const { missingPackages } = await import("../src/apps/packages.js");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pkgs-"));
+    try {
+      expect(missingPackages(dir)).toEqual([]);
+      fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ dependencies: { react: "^19", "@fontsource/kurale": "^5" }, devDependencies: { typescript: "^5" }, optionalDependencies: { fsevents: "*" } }));
+      expect(missingPackages(dir).sort()).toEqual(["@fontsource/kurale", "react", "typescript"]);
+      for (const n of ["react", "typescript"]) {
+        fs.mkdirSync(path.join(dir, "node_modules", n), { recursive: true });
+        fs.writeFileSync(path.join(dir, "node_modules", n, "package.json"), "{}");
+      }
+      // an update added a package whose install failed
+      expect(missingPackages(dir)).toEqual(["@fontsource/kurale"]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("app tier: createAppSkeleton kind web writes the standard app shape", async () => {
     const { createAppSkeleton, readApp } = await import("../src/apps/manager.js");
     const r = createAppSkeleton(path.join(dataDir, "users", "alice", "apps"), { id: "demo", name: "Demo", kind: "web" });

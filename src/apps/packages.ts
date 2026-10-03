@@ -94,6 +94,38 @@ export function installApp(appDir: string): Promise<InstallResult> {
   return exclusive(appDir, () => runBun(appDir, ["install", "--ignore-scripts", ...LINK_BACKEND]));
 }
 
+/** Packages package.json lists that node_modules does not have: an update
+ *  whose install failed, or an app copied without its node_modules. */
+export function missingPackages(appDir: string): string[] {
+  let pkg: { dependencies?: unknown; devDependencies?: unknown };
+  try {
+    pkg = JSON.parse(fs.readFileSync(path.join(appDir, "package.json"), "utf8")) as typeof pkg;
+  } catch {
+    return [];
+  }
+  const names = [pkg.dependencies, pkg.devDependencies].flatMap((d) => (d && typeof d === "object" ? Object.keys(d) : []));
+  return names.filter((n) => !fs.existsSync(path.join(appDir, "node_modules", n, "package.json")));
+}
+
+/** When each app last had its missing packages installed by healPackages. */
+const healed = new Map<string, number>();
+const HEAL_EVERY_MS = 10 * 60_000;
+
+/** Install the packages an installed app gained but does not have (an update
+ *  whose install failed) in the background, at most once per ten minutes per
+ *  app so a failing install does not repeat on every build check. An app
+ *  never installed is left to its first install. True while an install runs
+ *  (one started now or already running). */
+export function healPackages(appDir: string, done: (r: InstallResult) => void): boolean {
+  if (packagesBusy(appDir)) return true;
+  if (!fs.existsSync(path.join(appDir, "node_modules")) || !missingPackages(appDir).length) return false;
+  const key = path.resolve(appDir);
+  if (Date.now() - (healed.get(key) ?? 0) < HEAL_EVERY_MS) return false;
+  healed.set(key, Date.now());
+  void installApp(appDir).then(done);
+  return true;
+}
+
 /** Take packages out of an app: `bun remove` updates package.json, the
  *  lockfile and node_modules together. Names arrive as argv entries (no
  *  shell), but callers must still reject flag-shaped names. */

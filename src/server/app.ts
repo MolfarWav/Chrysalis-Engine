@@ -61,7 +61,7 @@ import type { EventBus } from "./ws.js";
 import { ensureLookWatcher, stopLookWatcher } from "./look-watch.js";
 import { assertPublicHost } from "../net-guard.js";
 import { listShellThemes } from "../themes.js";
-import { installApp, hasPackages, packagesBusy } from "../apps/packages.js";
+import { installApp, hasPackages, healPackages, packagesBusy } from "../apps/packages.js";
 import { appFsOps, checkOutput, leaseHolder, MAX_BATCH_OPS, readBuildStatus, readDevMeta, sourceRev, takeLease, writeClientErrors, writeClientLogs, writeOutput } from "../builder/server.js";
 import { builderAsset, builderFrameCsp, builderVersion } from "../builder/assets.js";
 import type { FsOp } from "../builder/fs.js";
@@ -4639,7 +4639,13 @@ export function buildApp(deps: AppDeps): Hono<AppEnv> {
     const needsBuild = buildable && (!status || status.rev !== rev || (status.ok && !built) || lostDev);
     // packages still landing: a build now fails on imports that are moments
     // away, so the builder holds off until the install ends
-    const installing = packagesBusy(a.dir);
+    // packages the app lists but does not have (an update's install failed)
+    // are installed now, so the build does not fail on them
+    const username = c.get("user").username;
+    const installing = packagesBusy(a.dir) || (config.apps.packageDownloads && healPackages(a.dir, (r) => {
+      if (r.ok) bus.emit(username, "build_needed", { app: a.id, paths: ["package.json"] });
+      else log.warn(`[apps] ${username}/${a.id}: missing packages did not install: ${r.log.split("\n").slice(-2).join(" ")}`);
+    }));
     return c.json(
       { rev, buildable, needsBuild, installing, status, dev },
       200,

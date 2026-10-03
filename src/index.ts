@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import os from "node:os";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import { hasPackages, installApp } from "./apps/packages.js";
+import { hasPackages, installApp, missingPackages } from "./apps/packages.js";
 import { ConfigError, dataDirOf, envNameOf, flagNameOf, loadConfig, parseFlags, sandboxConfigOf, SETTINGS, type LoadedConfig } from "./config.js";
 import { ENGINE_VERSION, INSTALL_KIND, IN_CONTAINER, resolveHomeDir } from "./install.js";
 import { UserService } from "./users.js";
@@ -715,8 +715,8 @@ async function start(homeDir: string, dataDir: string, loaded: LoadedConfig): Pr
   }
 
   // app dependencies (async, boot never blocks on the install): install once
-  // for any app with a package.json and no node_modules. Builds happen in the
-  // browser when an app is opened.
+  // for any app missing a package its package.json lists (never installed, or
+  // an update whose install failed). Builds happen in the browser when an app is opened.
   void (async () => {
     if (!config.apps.packageDownloads) return;
     for (const name of users.list().map((u) => u.username)) {
@@ -725,7 +725,7 @@ async function start(homeDir: string, dataDir: string, loaded: LoadedConfig): Pr
       try { ids = fs.readdirSync(appsDir); } catch { continue; }
       for (const id of ids) {
         const dir = path.join(appsDir, id);
-        if (!hasPackages(dir) || fs.existsSync(path.join(dir, "node_modules"))) continue;
+        if (!hasPackages(dir) || !missingPackages(dir).length) continue;
         const r = await installApp(dir);
         if (r.ok) log.info(`[apps] installed packages for ${name}/${id} (${r.ms}ms)`);
         else log.warn(`[apps] package install failed for ${name}/${id}: ${r.log.split("\n").slice(-3).join(" ")}`);

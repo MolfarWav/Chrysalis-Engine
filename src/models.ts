@@ -240,6 +240,24 @@ const BUDGET_KEY: Record<string, "minimal" | "low" | "medium" | "high"> = {
   minimal: "minimal", low: "low", medium: "medium", med: "medium", high: "high", xhigh: "high", max: "high",
 };
 
+const REASONING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+/** Is this provider error a refusal of a request sent with reasoning off?
+ *  Providers word it differently ("reasoning is mandatory", "cannot be
+ *  disabled", NanoGPT's "Invalid value for reasoning.effort ...: "none""). The
+ *  levels the error lists, lowest first, when it lists any. */
+export function reasoningOffRefusal(message: string): { levels: GenerateRequest["reasoning"][] } | null {
+  const m = String(message || "");
+  const refused =
+    /reasoning is mandatory|cannot be disabled|reasoning.{0,40}required/i.test(m) ||
+    /unsupported_reasoning_effort/i.test(m) ||
+    /reasoning[._ ]?effort.{0,120}["'\\]+none["'\\]/i.test(m);
+  if (!refused) return null;
+  const listed = /supported values are:?([^".}]*)/i.exec(m)?.[1] ?? "";
+  const named = listed.split(/[,\s]+/).map((s) => s.trim().toLowerCase());
+  return { levels: REASONING_LEVELS.filter((l) => named.includes(l)) };
+}
+
 /** Split raw inline thinking (e.g. "<think>…</think>") out of a reply. Handles
  *  tags anywhere in the text and an unclosed tag (stream cut mid-think). */
 function splitThinkingTags(text: string, open: string, close: string): { reasoning: string; text: string } {
@@ -636,7 +654,7 @@ export class UserModelService {
   }
 
   /** Models that refused a request with reasoning switched off, by ref, and
-   *  the lowest level they accept instead. */
+   *  the lowest level they accept instead (see `reasoningOffRefusal`). */
   private reasoningFloor = new Map<string, NonNullable<GenerateRequest["reasoning"]>>();
 
   /** A request that names no reasoning level goes out with reasoning off, and
@@ -648,9 +666,10 @@ export class UserModelService {
     try {
       return await this.generateInner(known ? { ...req, reasoning: known } : req, onDelta, onThinking);
     } catch (e) {
-      if (!unset || known || !/reasoning is mandatory|cannot be disabled|reasoning.{0,40}required/i.test((e as Error).message)) throw e;
+      const refusal = unset && !known ? reasoningOffRefusal((e as Error).message) : null;
+      if (!refusal) throw e;
       const model = await this.resolveModel(req.model).catch(() => null);
-      const lowest = (model ? getSupportedThinkingLevels(model) : []).find((l) => l !== "off") ?? "low";
+      const lowest = refusal.levels[0] ?? (model ? getSupportedThinkingLevels(model) : []).find((l) => l !== "off") ?? "low";
       const level = lowest as NonNullable<GenerateRequest["reasoning"]>;
       if (req.model) this.reasoningFloor.set(req.model, level);
       return this.generateInner({ ...req, reasoning: level }, onDelta, onThinking);

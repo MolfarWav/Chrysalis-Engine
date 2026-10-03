@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
-import { UserModelService } from "../src/models.js";
+import { UserModelService, reasoningOffRefusal } from "../src/models.js";
 import { defaultInstanceConfig } from "../src/config.js";
 import { bootstrapUserDir, userPaths } from "../src/paths.js";
 import { loadCustomProviders, buildProvider } from "../src/providers/custom.js";
@@ -529,4 +529,22 @@ describe("models the pickers show", () => {
     // hiding does not stop a model someone names from running
     expect(svc.setShown(["faux/faux-second"], false)).toEqual([]);
   }, 20_000);
+});
+
+describe("reasoningOffRefusal", () => {
+  it("reads NanoGPT's refusal of effort none and the levels it lists", () => {
+    const msg =
+      'model error: 400: {"message":"Invalid value for reasoning.effort on model \\"meta/muse-spark-1.3-contributor\\": \\"none\\". Supported values are: minimal, low, medium, high, xhigh.","type":"invalid_request_error","param":"reasoning.effort","code":"unsupported_reasoning_effort"}';
+    expect(reasoningOffRefusal(msg)).toEqual({ levels: ["minimal", "low", "medium", "high", "xhigh"] });
+  });
+
+  it("keeps the wordings it knew, with no levels named", () => {
+    expect(reasoningOffRefusal("400: reasoning is mandatory for this model")).toEqual({ levels: [] });
+    expect(reasoningOffRefusal("Reasoning cannot be disabled")).toEqual({ levels: [] });
+  });
+
+  it("ignores other errors, also about an unsupported level other than none", () => {
+    expect(reasoningOffRefusal("429: rate limit")).toBeNull();
+    expect(reasoningOffRefusal('Invalid value for reasoning.effort: "xhigh". Supported values are: low, medium')).toBeNull();
+  });
 });

@@ -7,6 +7,8 @@ Versions here count from 0.1.0 and are independent of upstream's.
 
 ## Unreleased
 
+- Models that cannot switch thinking off and say so in NanoGPT's words ("Invalid value for reasoning.effort ... none") get the lowest level they list, so plugins that name no thinking level (the dashboard sensor, Litopys) work with them.
+
 ## 0.6.1 (2026-10-03)
 
 - Roleplay 4.21.1 (app update): on a computer, sections open as a drawer over the page again, as before 4.20.0; phones keep pages.

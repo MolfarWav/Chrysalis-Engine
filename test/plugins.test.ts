@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { discoverPlugins, invalidatePluginCache, runPluginHook, runPluginRoute, runPluginTool, collectSiblingTools, collectSiblingLlmHooks, syncSchedules, stopSchedules, type LoadedPlugin } from "../src/plugins/runtime.js";
+import { discoverPlugins, invalidatePluginCache, runPluginHook, runPluginRoute, runPluginTool, collectSiblingTools, collectSiblingLlmHooks, sanitizeTurn, syncSchedules, stopSchedules, type LoadedPlugin } from "../src/plugins/runtime.js";
 import { log } from "../src/logger.js";
 import { PluginStoreService } from "../src/plugins/store.js";
 
@@ -373,6 +373,53 @@ export function uiPanel(ctx) {
     expect(seen[0]!.executeTool).toBeUndefined();
     expect(seen[0]!.source).toBe("app:asker");
   }, 30_000);
+
+  it("llmRequest hooks see the request's turn labels, sanitized; the model never sees them", async () => {
+    writePlugin(
+      "asker",
+      { name: "A", version: "1", permissions: ["routes", "llm"], origin: "local" },
+      `export function handleRoute(req, host) {
+        const r = host.llm.results.a;
+        if (r) return { status: 200, json: { text: r.text } };
+        host.llm.request("a", {
+          messages: [{ role: "user", content: "go" }],
+          turn: { op: "swipe", chatId: "c1", speakerName: "x".repeat(300), swipe: 2, targetId: { bad: 1 }, secret: "no" },
+        });
+        return { __llmPending: true };
+      }`,
+    );
+    writePlugin(
+      "watcher",
+      { name: "W", version: "1", permissions: ["hooks", "llm"], origin: "local" },
+      `export function llmRequest(ctx) {
+        return { systemPrompt: JSON.stringify(ctx.turn ?? null) };
+      }`,
+    );
+    const plugins = discoverPlugins(path.join(dir, "plugins"));
+    const asker = plugins.find((p) => p.id === "asker")!;
+    const base = deps();
+    const seen: Record<string, unknown>[] = [];
+    const fakeModels = {
+      generate: async (req: Record<string, unknown>) => {
+        seen.push(req);
+        return { text: "OK", model: "fake/model", usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, costTotal: 0 } };
+      },
+    };
+    await runPluginRoute(asker, { method: "POST", path: "/go", query: {}, body: {} }, {
+      ...base,
+      models: fakeModels as never,
+      llmHooks: (self) => collectSiblingLlmHooks(plugins, self, base),
+    });
+    expect(JSON.parse(String(seen[0]!.systemPrompt))).toEqual({ op: "swipe", chatId: "c1", speakerName: "x".repeat(200), swipe: 2 });
+    expect(seen[0]!.turn).toBeUndefined();
+  }, 30_000);
+
+  it("sanitizeTurn keeps known labels only", () => {
+    expect(sanitizeTurn(null)).toBeNull();
+    expect(sanitizeTurn([1])).toBeNull();
+    expect(sanitizeTurn({ other: "x" })).toBeNull();
+    expect(sanitizeTurn({ op: "send", swipe: Number.NaN, speakerId: "aria" })).toEqual({ op: "send", speakerId: "aria" });
+  });
 
   it("runPluginTool: a tool can make a two-phase net call", async () => {
     writePlugin(

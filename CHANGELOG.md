@@ -7,6 +7,7 @@ Versions here count from 0.1.0 and are independent of upstream's.
 
 ## Unreleased
 
+- App plugins: a route's model request can carry `turn` labels (op, chatId, speakerId, speakerName, targetId, swipe). The model never sees them; sibling `llmRequest` hooks get them as `ctx.turn`, so a hook knows who speaks and whether it is a new reply, a swipe, a continue or an impersonation.
 - Models that cannot switch thinking off and say so in NanoGPT's words ("Invalid value for reasoning.effort ... none") get the lowest level they list, so plugins that name no thinking level (the dashboard sensor, Litopys) work with them.
 
 ## 0.6.1 (2026-10-03)

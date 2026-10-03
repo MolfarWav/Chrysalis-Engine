@@ -340,6 +340,23 @@ const LLM_PATCH_FIELDS = [
   "reasoningTags", "assistantPrefill", "promptFormat", "presetParams", "schema",
 ] as const;
 
+/** What a route request says about the turn it generates, for llmRequest
+ *  hooks only: it never reaches the model. Who speaks and what kind of
+ *  generation it is (send, next, swipe, continue, impersonate), as plain
+ *  labels: known keys, strings cut to 200 chars, finite numbers; anything
+ *  else is dropped. */
+const TURN_KEYS = ["op", "chatId", "speakerId", "speakerName", "targetId", "swipe"] as const;
+export function sanitizeTurn(raw: unknown): Record<string, string | number> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out: Record<string, string | number> = {};
+  for (const key of TURN_KEYS) {
+    const v = (raw as Record<string, unknown>)[key];
+    if (typeof v === "string") out[key] = v.slice(0, 200);
+    else if (typeof v === "number" && Number.isFinite(v)) out[key] = v;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 /** Sibling plugins that can patch this plugin's llm requests: llmRequest
  *  hooks, gated on BOTH "hooks" and "llm" (an imported plugin needs both
  *  grants — seeing another plugin's prompts is only for plugins the user has
@@ -377,6 +394,7 @@ export async function applyLlmRequestHooks(
   key: string,
   req: GenerateRequest,
   deps: PluginRuntimeDeps,
+  turn: Record<string, string | number> | null = null,
 ): Promise<GenerateRequest> {
   if (!deps.llmHooks) return req;
   const hooks = await deps.llmHooks(self).catch(() => [] as LlmRequestHook[]);
@@ -386,7 +404,7 @@ export async function applyLlmRequestHooks(
     const snapshot = JSON.parse(JSON.stringify(out)) as Record<string, unknown>;
     let patch: Record<string, unknown> | null = null;
     try {
-      patch = await runPluginHook(plugin, "llmRequest", { request: snapshot, plugin: self.id, key }, deps);
+      patch = await runPluginHook(plugin, "llmRequest", { request: snapshot, plugin: self.id, key, ...(turn ? { turn: { ...turn } } : {}) }, deps);
     } catch (e) {
       // a patch hook must never be able to break a generation it patches
       log.warn(`[plugin:${plugin.id}] llmRequest hook crashed: ${(e as Error).message}`);
@@ -674,7 +692,8 @@ async function runPassRequests(
     // `stream` is an app-level routing descriptor, not a GenerateRequest
     // field — strip it and use it to route live deltas when a sink exists.
     // `wantsTools` likewise: a marker asking for sibling-contributed tools.
-    const { stream, wantsTools, ...clean } = req as GenerateRequest & { stream?: unknown; wantsTools?: unknown; tools?: unknown };
+    // `turn` labels the generation for llmRequest hooks (sanitizeTurn).
+    const { stream, wantsTools, turn, ...clean } = req as GenerateRequest & { stream?: unknown; wantsTools?: unknown; tools?: unknown; turn?: unknown };
     let toolBridge: PluginToolBridge | null = null;
     if (mode !== "tool") {
       toolBridge = pluginToolBridge(plugin, clean, deps);
@@ -682,7 +701,7 @@ async function runPassRequests(
     }
     delete clean.tools;
     const streamTag = mode === "route" ? stream : undefined;
-    const request = mode === "route" ? await applyLlmRequestHooks(plugin, key, clean, deps) : clean;
+    const request = mode === "route" ? await applyLlmRequestHooks(plugin, key, clean, deps, sanitizeTurn(turn)) : clean;
     const onDelta = streamTag && deps.onLlmDelta ? (d: string) => deps.onLlmDelta!(streamTag, d) : undefined;
     const onThinking = streamTag && deps.onLlmThinking ? (d: string) => deps.onLlmThinking!(streamTag, d) : undefined;
     const onToolEvent = streamTag && deps.onLlmTool ? (ev: Parameters<NonNullable<PluginRuntimeDeps["onLlmTool"]>>[1]) => deps.onLlmTool!(streamTag, ev) : undefined;
